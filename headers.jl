@@ -1,6 +1,12 @@
-# Constants
+#=
 
-PCAP_ERRBUF_SIZE = 256
+    Define constants
+
+=#
+
+const PCAP_ERRBUF_SIZE = 256
+const ETHERTYPE_IP = 0x0800
+const IPPROTO_TCP  = 0x06
 
 #=
 
@@ -18,14 +24,13 @@ abstract type Header end
     application = 5 # HTTP
 end
 
-mutable struct Layer{T} where T <: Header
+# TODO: Don't have this as mutable, it is slower than a generic struct
+#        but not just making a new struct each time thats also slow...
+mutable struct Layer{T<:Header}
     layer::Layer_type
     header::T
-    payload::Union{Layer, Vector{UInt8}}
+    payload::Union{Layer, Vector{UInt8}, Missing}
 end
-
-# Lowest "layer"
-Packet = Layer{Ethernet_header}
 
 mutable struct Pcap end
 
@@ -45,11 +50,14 @@ end
 struct Ethernet_header <: Header
     destination::NTuple{6, UInt8}
     source::NTuple{6, UInt8}
-    type::UInt16
+    protocol::UInt16
     function Ethernet_header(p::Ptr{UInt8})::Ethernet_header
         return unsafe_load(Ptr{Ethernet_header}(p))
     end
 end
+
+# Lowest "layer"
+Packet = Layer{Ethernet_header}
 
 # First read base header, then we can deal with options etc.
 struct _IPv4_header
@@ -64,7 +72,7 @@ struct _IPv4_header
     saddr::UInt32
     daddr::UInt32
     function _IPv4_header(p::Ptr{UInt8})::_IPv4_header
-        return unsafe_load(Ptr{_IPv4_header}(p + sizeof(Ethernet_header)))
+        return unsafe_load(Ptr{_IPv4_header}(p))
     end
 end
 
@@ -87,7 +95,7 @@ struct IPv4_header <: Header
     function IPv4_header(p::Ptr{UInt8})::IPv4_header
         _ip = _IPv4_header(p)
         version, ihl = byte_to_nibbles(ntoh(_ip.version_ihl)) # Version + IHL
-        options_offset = p + sizeof(Ethernet_header) + sizeof(_IPv4_header)
+        options_offset = p + sizeof(_IPv4_header)
         options_size = ihl*4 - sizeof(_IPv4_header)
         options = options_size > 0 ? Base.pointerref(options_offset, 1, options_size) : 0
         return new(
@@ -109,8 +117,8 @@ struct _TCP_header
     win_size::UInt16
     check::UInt16
     urg_ptr::UInt16
-    function _TCP_header(p::Ptr{UInt8}, offset::Int64)::_TCP_header
-        return unsafe_load(Ptr{_TCP_header}(p + offset))
+    function _TCP_header(p::Ptr{UInt8})::_TCP_header
+        return unsafe_load(Ptr{_TCP_header}(p))
     end
 end
 
@@ -131,8 +139,8 @@ struct TCP_header <: Header
     check::UInt16
     urg_ptr::UInt16
     #options::NTuple{10, UInt32}
-    function TCP_header(p::Ptr{UInt8}, offset::Int64)::TCP_header
-        _tcp = _TCP_header(p, offset)
+    function TCP_header(p::Ptr{UInt8})::TCP_header
+        _tcp = _TCP_header(p)
         flags = ntoh(_tcp.flags)
         header_length   =  (flags & 0b1111000000000000) >> 12
         reserved   = UInt8((flags & 0b0000111111000000) >> 6)
@@ -142,8 +150,8 @@ struct TCP_header <: Header
         rst             = ((flags & 0b0000000000000100) >> 2) == 0x1
         syn             = ((flags & 0b0000000000000010) >> 1) == 0x1
         fin             = ((flags & 0b0000000000000001)     ) == 0x1
-        options_offset = p + offset + sizeof(_TCP_header)
-        options_size = header_length*4 - sizeof(_TCP_header)
+        #options_offset = p + sizeof(_TCP_header)
+        #options_size = header_length*4 - sizeof(_TCP_header)
         #options = options_size > 0 ? Base.pointerref(options_offset, 1, options_size) : zeros(UInt32, 10)
         # Go from network byte order to host byte order (excluding flags as we already changed them)
         return new(
@@ -161,10 +169,28 @@ end
 =#
 
 struct Node
-    type::Type{Header}
+    type::Type{<:Header}
     id::Unsigned
     children::Vector{Node}
 end
+
+TCP = Node(
+    TCP_header,
+    IPPROTO_TCP,
+    []
+)
+
+IPv4 = Node(
+    IPv4_header,
+    ETHERTYPE_IP,
+    [TCP]
+)
+
+Ethernet = Node(
+    Ethernet_header,
+    0x00,
+    [IPv4]
+)
 
 #=
 
@@ -175,18 +201,9 @@ end
 getoffset(::Ethernet_header)::Int64             = sizeof(Ethernet_header)
 getoffset(hdr::IPv4_header)::Int64              = hdr.ihl * 4
 getoffset(hdr::TCP_header)::Int64               = hdr.hdr_len * 4
-getoffset(lyr::Layer{Any})::Int64               = getoffset(lyr.header)
+getoffset(lyr::Layer{<:Header})::Int64          = getoffset(lyr.header)
 
 getprotocol(hdr::Ethernet_header)::UInt16       = ntoh(hdr.protocol)
 getprotocol(hdr::IPv4_header)::UInt8            = hdr.protocol
 getprotocol(lyr::Layer{TCP_header})::UInt64     = lyr.payload[1:4]
-getprotocol(lyr::Layer{Any})::Unsigned          = getprotocol(lyr.header)
-
-#=
-
-    Define constants
-
-=#
-
-const ETHERTYPE_IP = 0x0800
-const IPPROTO_TCP  = 0x06
+getprotocol(lyr::Layer{<:Header})::Unsigned     = getprotocol(lyr.header)
