@@ -61,6 +61,65 @@ function sniff(callback::Function)::Nothing
     pcap_loop(handle, -1, callback, C_NULL)
 end
 
+# @debug macro does not work in callback context
+function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Packet
+    layer_index = 2
+    offset = 0
+    layers::Vector{Layer{<:Header}} = [Layer(Layer_type(layer_index), Ethernet_header(p), missing)] # Push layers here as we make them, then replace the missing backwards...
+    node = Ethernet
+    while layer_index ≤ 3
+        prev_layer = layers[end]::Layer{<:Header}
+        offset += getoffset(prev_layer)
+        proto = getprotocol(prev_layer)
+        # println("Packet context:", prev_layer, "\noffset:", offset, "\nproto:", proto)
+        for child ∈ node.children
+            if child.id == proto
+                # println("Added child:", child)
+                layer_index += 1
+                node = child
+                push!(layers, Layer(Layer_type(layer_index), child.type(p+offset), missing))
+                break
+            end
+        end
+        if prev_layer.layer == Layer_type(layer_index)
+            # End of tree
+            @debug "End of packet tree:" layer=Layer_type(layer_index) protocol_code=proto node
+            break
+        end
+    end
+    payload_size = packet_size - offset
+    if payload_size > 0
+        payload = zeros(UInt8, payload_size)
+        for i=1:payload_size
+            payload[i] = Base.pointerref(p+offset+i, 1, 1)
+        end
+    else
+        payload = Vector{UInt8}()
+    end
+    # println("Payload size: ", payload_size)
+    l = layers[end]::Layer{<:Header}
+    l.payload = payload
+    layer_index -= 1
+    while layer_index ≥ 2
+        layer_index -= 1
+        packet = layers[layer_index]::Layer{<:Header} # Minus 1 because our layers start at 2
+        packet.payload = l
+        l = packet
+    end
+    return l
+end    
+
+# Callback for packet_from_pointer
+
+function callback(user::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})::Cvoid
+    cap_hdr = unsafe_load(header)
+    @info "Packet capture info" cap_hdr
+    println("\n")
+    packet = packet_from_pointer(packet, cap_hdr.length)
+    dump(packet)
+    exit(1) 
+end
+
 #=
 
     Header debugging callback
