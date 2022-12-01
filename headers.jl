@@ -1,0 +1,192 @@
+# Constants
+
+PCAP_ERRBUF_SIZE = 256
+
+#=
+
+Generic types
+
+=#
+
+abstract type Header end
+
+@enum Layer_type begin
+    physical = 1    # Ethernet (on the wire only)
+    link = 2        # Ethernet
+    network = 3     # IPv4
+    transport = 4   # TCP
+    application = 5 # HTTP
+end
+
+mutable struct Layer{T} where T <: Header
+    layer::Layer_type
+    header::T
+    payload::Union{Layer, Vector{UInt8}}
+end
+
+# Lowest "layer"
+Packet = Layer{Ethernet_header}
+
+mutable struct Pcap end
+
+struct Timeval
+    seconds::Clong
+    ms::Clong
+end
+
+struct Capture_header
+    timestamp::Timeval
+    capture_length::Int32
+    length::Int32
+end
+
+# Protocol header definitions, taken from relevant header files
+
+struct Ethernet_header <: Header
+    destination::NTuple{6, UInt8}
+    source::NTuple{6, UInt8}
+    type::UInt16
+    function Ethernet_header(p::Ptr{UInt8})::Ethernet_header
+        return unsafe_load(Ptr{Ethernet_header}(p))
+    end
+end
+
+# First read base header, then we can deal with options etc.
+struct _IPv4_header
+    version_ihl::UInt8 # 4 -> version, 4 -> IHL
+    tos::UInt8 # Type of service + priority
+    tot_len::UInt16 # Total IPv4 length
+    id::UInt16 # identification
+    frag_off::UInt16 # Fragmented offset
+    ttl::UInt8
+    protocol::UInt8
+    check::UInt16 # Header checksum
+    saddr::UInt32
+    daddr::UInt32
+    function _IPv4_header(p::Ptr{UInt8})::_IPv4_header
+        return unsafe_load(Ptr{_IPv4_header}(p + sizeof(Ethernet_header)))
+    end
+end
+
+Base.ntoh(x::UInt8)::UInt8 = x
+byte_to_nibbles(x::UInt8)::NTuple{2, UInt8} = (x & 0x0f, (x & 0xf0) >> 4)
+
+struct IPv4_header <: Header
+    version::UInt8
+    ihl::UInt8
+    tos::UInt8
+    tot_len::UInt16
+    id::UInt16
+    frag_off::UInt16
+    ttl::UInt8
+    protocol::UInt8
+    check::UInt16
+    saddr::UInt32
+    daddr::UInt32
+    options::UInt32
+    function IPv4_header(p::Ptr{UInt8})::IPv4_header
+        _ip = _IPv4_header(p)
+        version, ihl = byte_to_nibbles(ntoh(_ip.version_ihl)) # Version + IHL
+        options_offset = p + sizeof(Ethernet_header) + sizeof(_IPv4_header)
+        options_size = ihl*4 - sizeof(_IPv4_header)
+        options = options_size > 0 ? Base.pointerref(options_offset, 1, options_size) : 0
+        return new(
+            ihl, version, # These two may be flipped depending on byte order
+            ntoh(_ip.tos), ntoh(_ip.tot_len), ntoh(_ip.id),
+            ntoh(_ip.frag_off), ntoh(_ip.ttl), ntoh(_ip.protocol),
+            ntoh(_ip.check), ntoh(_ip.saddr), ntoh(_ip.daddr),
+            ntoh(options)
+        )
+    end
+end
+
+struct _TCP_header
+    sport::UInt16
+    dport::UInt16
+    seq::UInt32
+    ack_num::UInt32
+    flags::UInt16
+    win_size::UInt16
+    check::UInt16
+    urg_ptr::UInt16
+    function _TCP_header(p::Ptr{UInt8}, offset::Int64)::_TCP_header
+        return unsafe_load(Ptr{_TCP_header}(p + offset))
+    end
+end
+
+struct TCP_header <: Header
+    sport::UInt16
+    dport::UInt16
+    seq::UInt32
+    ack_num::UInt32
+    hdr_len::UInt8
+    reserved::UInt8
+    urg::Bool
+    ack::Bool
+    psh::Bool
+    rst::Bool
+    syn::Bool
+    fin::Bool
+    win_size::UInt16
+    check::UInt16
+    urg_ptr::UInt16
+    #options::NTuple{10, UInt32}
+    function TCP_header(p::Ptr{UInt8}, offset::Int64)::TCP_header
+        _tcp = _TCP_header(p, offset)
+        flags = ntoh(_tcp.flags)
+        header_length   =  (flags & 0b1111000000000000) >> 12
+        reserved   = UInt8((flags & 0b0000111111000000) >> 6)
+        urg             = ((flags & 0b0000000000100000) >> 5) == 0x1
+        ack             = ((flags & 0b0000000000010000) >> 4) == 0x1
+        psh             = ((flags & 0b0000000000001000) >> 3) == 0x1
+        rst             = ((flags & 0b0000000000000100) >> 2) == 0x1
+        syn             = ((flags & 0b0000000000000010) >> 1) == 0x1
+        fin             = ((flags & 0b0000000000000001)     ) == 0x1
+        options_offset = p + offset + sizeof(_TCP_header)
+        options_size = header_length*4 - sizeof(_TCP_header)
+        #options = options_size > 0 ? Base.pointerref(options_offset, 1, options_size) : zeros(UInt32, 10)
+        # Go from network byte order to host byte order (excluding flags as we already changed them)
+        return new(
+            ntoh(_tcp.sport), ntoh(_tcp.dport), ntoh(_tcp.seq), ntoh(_tcp.ack_num),
+            header_length, reserved, urg, ack, psh, rst, syn, fin, 
+            ntoh(_tcp.win_size), ntoh(_tcp.check), ntoh(_tcp.urg_ptr)#, options
+        )
+    end
+end
+
+#=
+
+    Header tree
+
+=#
+
+struct Node
+    type::Type{Header}
+    id::Unsigned
+    children::Vector{Node}
+end
+
+#=
+
+    Packet data related functions
+
+=#
+
+getoffset(::Ethernet_header)::Int64             = sizeof(Ethernet_header)
+getoffset(hdr::IPv4_header)::Int64              = hdr.ihl * 4
+getoffset(hdr::TCP_header)::Int64               = hdr.hdr_len * 4
+getoffset(lyr::Layer{Any})::Int64               = getoffset(lyr.header)
+
+getprotocol(hdr::Ethernet_header)::UInt16       = ntoh(hdr.protocol)
+getprotocol(hdr::IPv4_header)::UInt8            = hdr.protocol
+getprotocol(lyr::Layer{TCP_header})::UInt64     = lyr.payload[1:4]
+getprotocol(lyr::Layer{Any})::Unsigned          = getprotocol(lyr.header)
+
+#=
+
+    Define constants
+
+=#
+
+const ETHERTYPE_IP = 0x0800
+const IPPROTO_TCP  = 0x06
