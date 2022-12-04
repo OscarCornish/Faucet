@@ -61,6 +61,13 @@ function sniff(callback::Function)::Nothing
     pcap_loop(handle, -1, callback, C_NULL)
 end
 
+function increment_offset(offset::Int64, pl::Layer{<:Header})::Int64
+    print("Offset from: ", offset)
+    x = offset + getoffset(pl)
+    println("\t to: ", x, "\t (", pl.layer, ")")
+    return x
+end
+
 # @debug macro does not work in callback context
 function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Packet
     layer_index = 2
@@ -69,7 +76,8 @@ function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Packet
     node = Ethernet
     while layer_index ≤ 3
         prev_layer = layers[end]::Layer{<:Header}
-        offset += getoffset(prev_layer)
+        # offset += getoffset(prev_layer)
+        offset = increment_offset(offset, prev_layer)
         proto = getprotocol(prev_layer)
         # println("Packet context:", prev_layer, "\noffset:", offset, "\nproto:", proto)
         for child ∈ node.children
@@ -87,6 +95,8 @@ function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Packet
             break
         end
     end
+    l = layers[end]::Layer{<:Header}
+    offset = increment_offset(offset, l)
     payload_size = packet_size - offset
     if payload_size > 0
         payload = zeros(UInt8, payload_size)
@@ -97,7 +107,6 @@ function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Packet
         payload = Vector{UInt8}()
     end
     # println("Payload size: ", payload_size)
-    l = layers[end]::Layer{<:Header}
     l.payload = payload
     layer_index -= 1
     while layer_index ≥ 2

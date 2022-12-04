@@ -7,6 +7,7 @@
 const PCAP_ERRBUF_SIZE = 256
 const ETHERTYPE_IP = 0x0800
 const IPPROTO_TCP  = 0x06
+const IPPROTO_UDP = 0x11
 
 #=
 
@@ -59,6 +60,9 @@ end
 # Lowest "layer"
 Packet = Layer{Ethernet_header}
 
+getoffset(::Ethernet_header)::Int64         = sizeof(Ethernet_header)
+getprotocol(hdr::Ethernet_header)::UInt16   = ntoh(hdr.protocol)
+
 # First read base header, then we can deal with options etc.
 struct _IPv4_header
     version_ihl::UInt8 # 4 -> version, 4 -> IHL
@@ -106,7 +110,10 @@ struct IPv4_header <: Header
             ntoh(options)
         )
     end
-end
+end    
+
+getoffset(hdr::IPv4_header)::Int64      = hdr.ihl * 4
+getprotocol(hdr::IPv4_header)::UInt8    = hdr.protocol
 
 struct _TCP_header
     sport::UInt16
@@ -162,6 +169,26 @@ struct TCP_header <: Header
     end
 end
 
+getoffset(hdr::TCP_header)::Int64           = hdr.hdr_len * 4
+getprotocol(lyr::Layer{TCP_header})::UInt64 = lyr.payload[1:min(end, 4)] # No protocol field...
+
+struct UDP_header <: Header
+    sport::UInt16
+    dport::UInt16
+    len::UInt16
+    check::UInt16
+    function UDP_header(p::Ptr{UInt8})::UDP_header
+        return unsafe_load(Ptr{UDP_header}(p))
+    end
+end
+
+getoffset(::UDP_header)::Int64                  = sizeof(UDP_header)
+getprotocol(lyr::Layer{UDP_header})::Unsigned   = lyr.payload[1:min(length(lyr.payload), 4)]
+
+# Default layer -> header call
+getoffset(lyr::Layer{<:Header})::Int64          = getoffset(lyr.header)
+getprotocol(lyr::Layer{<:Header})::Unsigned     = getprotocol(lyr.header)
+
 #=
 
     Header tree
@@ -174,36 +201,32 @@ struct Node
     children::Vector{Node}
 end
 
+# Transport -4
+
+UDP = Node(
+    UDP_header,
+    IPPROTO_UDP,
+    []
+)
+
 TCP = Node(
     TCP_header,
     IPPROTO_TCP,
     []
 )
 
+# Network - 3
+
 IPv4 = Node(
     IPv4_header,
     ETHERTYPE_IP,
-    [TCP]
+    [TCP, UDP]
 )
+
+# Link - 2
 
 Ethernet = Node(
     Ethernet_header,
     0x00,
     [IPv4]
 )
-
-#=
-
-    Packet data related functions
-
-=#
-
-getoffset(::Ethernet_header)::Int64             = sizeof(Ethernet_header)
-getoffset(hdr::IPv4_header)::Int64              = hdr.ihl * 4
-getoffset(hdr::TCP_header)::Int64               = hdr.hdr_len * 4
-getoffset(lyr::Layer{<:Header})::Int64          = getoffset(lyr.header)
-
-getprotocol(hdr::Ethernet_header)::UInt16       = ntoh(hdr.protocol)
-getprotocol(hdr::IPv4_header)::UInt8            = hdr.protocol
-getprotocol(lyr::Layer{TCP_header})::UInt64     = lyr.payload[1:4]
-getprotocol(lyr::Layer{<:Header})::Unsigned     = getprotocol(lyr.header)
