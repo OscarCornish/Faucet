@@ -1,13 +1,5 @@
-#=
 
-    Define constants
-
-=#
-
-const PCAP_ERRBUF_SIZE = 256
-const ETHERTYPE_IP = 0x0800
-const IPPROTO_TCP  = 0x06
-const IPPROTO_UDP = 0x11
+include("constants.jl")
 
 #=
 
@@ -57,11 +49,13 @@ struct Ethernet_header <: Header
     end
 end
 
-# Lowest "layer"
-Packet = Layer{Ethernet_header}
-
 getoffset(::Ethernet_header)::Int64         = sizeof(Ethernet_header)
 getprotocol(hdr::Ethernet_header)::UInt16   = ntoh(hdr.protocol)
+
+struct Packet
+    cap_header::Capture_header
+    data::Layer{Ethernet_header}
+end
 
 # First read base header, then we can deal with options etc.
 struct _IPv4_header
