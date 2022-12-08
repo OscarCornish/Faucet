@@ -54,7 +54,7 @@ getprotocol(hdr::Ethernet_header)::UInt16   = ntoh(hdr.protocol)
 
 struct Packet
     cap_header::Capture_header
-    data::Layer{Ethernet_header}
+    payload::Layer{Ethernet_header}
 end
 
 # First read base header, then we can deal with options etc.
@@ -195,7 +195,7 @@ struct Node
     children::Vector{Node}
 end
 
-# Transport -4
+# Transport - 4
 
 UDP = Node(
     UDP_header,

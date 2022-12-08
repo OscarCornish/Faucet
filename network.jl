@@ -1,6 +1,6 @@
 # Requires the packet structs defined in headers.jl
 
-include("headers.jl")
+include("environment.jl")
 
 #=
     Utility functions
@@ -61,23 +61,15 @@ function sniff(callback::Function)::Nothing
     pcap_loop(handle, -1, callback, C_NULL)
 end
 
-function increment_offset(offset::Int64, pl::Layer{<:Header})::Int64
-    print("Offset from: ", offset)
-    x = offset + getoffset(pl)
-    println("\t to: ", x, "\t (", pl.layer, ")")
-    return x
-end
-
 # @debug macro does not work in callback context
-function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Packet
+function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Layer{Ethernet_header}
     layer_index = 2
     offset = 0
     layers::Vector{Layer{<:Header}} = [Layer(Layer_type(layer_index), Ethernet_header(p), missing)] # Push layers here as we make them, then replace the missing backwards...
     node = Ethernet
     while layer_index ≤ 3
         prev_layer = layers[end]::Layer{<:Header}
-        # offset += getoffset(prev_layer)
-        offset = increment_offset(offset, prev_layer)
+        offset += getoffset(prev_layer)
         proto = getprotocol(prev_layer)
         # println("Packet context:", prev_layer, "\noffset:", offset, "\nproto:", proto)
         for child ∈ node.children
@@ -96,7 +88,7 @@ function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Packet
         end
     end
     l = layers[end]::Layer{<:Header}
-    offset = increment_offset(offset, l)
+    offset += getoffset(l)
     payload_size = packet_size - offset
     if payload_size > 0
         payload = zeros(UInt8, payload_size)
@@ -120,13 +112,25 @@ end
 
 # Callback for packet_from_pointer
 
-function callback(user::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})::Cvoid
+function callback(::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})::Cvoid
     cap_hdr = unsafe_load(header)
-    @info "Packet capture info" cap_hdr
     println("\n")
-    packet = packet_from_pointer(packet, cap_hdr.length)
+    packet = Packet(cap_hdr, packet_from_pointer(packet, cap_hdr.length))
     dump(packet)
     exit(1) 
+end
+
+q = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
+
+function q_push(::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})::Cvoid
+    print("*")
+    cap_hdr = unsafe_load(header)
+    p = Packet(cap_hdr, packet_from_pointer(packet, cap_hdr.length))
+    if q.n_avail_items == ENVIRONMENT_QUEUE_SIZE
+        take!(q)
+    end
+    put!(q, p)
+    return nothing
 end
 
 #=
@@ -160,4 +164,6 @@ end
 
 =#
 
-sniff(callback)
+@async sniff(q_push)
+dump_queue(q)
+println("Main thread done...")
