@@ -123,7 +123,7 @@ end
 q = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
 
 function q_push(::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})::Cvoid
-    print("*")
+    #print("*")
     cap_hdr = unsafe_load(header)
     p = Packet(cap_hdr, packet_from_pointer(packet, cap_hdr.length))
     if q.n_avail_items == ENVIRONMENT_QUEUE_SIZE

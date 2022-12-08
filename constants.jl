@@ -13,3 +13,6 @@ const ETHERTYPE_IP      = 0x0800
 const IPPROTO_TCP       = 0x06
 const IPPROTO_UDP       = 0x11
 
+const SOCK_RAW          = 17
+const AF_PACKET         = 3
+const ETH_P_ALL         = 0x0003
