@@ -1,5 +1,7 @@
 # Requires the packet structs defined in headers.jl
 
+@debug "network: Loading..."
+
 include("environment.jl")
 
 #=
@@ -57,6 +59,8 @@ end
 close_pcap() = pcap_breakloop(handle)
 atexit(close_pcap)
 
+@debug "network: handle defined" handle
+
 function sniff(callback::Function)::Nothing
     pcap_loop(handle, -1, callback, C_NULL)
 end
@@ -66,7 +70,7 @@ function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Layer{Ethernet_
     layer_index = 2
     offset = 0
     layers::Vector{Layer{<:Header}} = [Layer(Layer_type(layer_index), Ethernet_header(p), missing)] # Push layers here as we make them, then replace the missing backwards...
-    node = Ethernet
+    node = HEADER_Ethernet
     while layer_index ≤ 3
         prev_layer = layers[end]::Layer{<:Header}
         offset += getoffset(prev_layer)
@@ -83,7 +87,6 @@ function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Layer{Ethernet_
         end
         if prev_layer.layer == Layer_type(layer_index)
             # End of tree
-            @debug "End of packet tree:" layer=Layer_type(layer_index) protocol_code=proto node
             break
         end
     end
@@ -114,16 +117,14 @@ end
 
 function callback(::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})::Cvoid
     cap_hdr = unsafe_load(header)
-    println("\n")
     packet = Packet(cap_hdr, packet_from_pointer(packet, cap_hdr.length))
     dump(packet)
     exit(1) 
 end
 
-q = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
+q = environment_q
 
 function q_push(::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})::Cvoid
-    #print("*")
     cap_hdr = unsafe_load(header)
     p = Packet(cap_hdr, packet_from_pointer(packet, cap_hdr.length))
     if q.n_avail_items == ENVIRONMENT_QUEUE_SIZE
@@ -164,6 +165,8 @@ end
 
 =#
 
-@async sniff(q_push)
-dump_queue(q)
-println("Main thread done...")
+@debug "network: callback defined"
+#@async sniff(q_push)
+@debug "network: sniff started, waiting for packets"
+#dump_queue(q, "test")
+@debug "network: queue dumped, done."

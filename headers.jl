@@ -1,3 +1,10 @@
+#=
+
+    Headers.jl
+
+=#
+
+@debug "headers: Loading..."
 
 include("constants.jl")
 
@@ -183,6 +190,8 @@ getprotocol(lyr::Layer{UDP_header})::Unsigned   = lyr.payload[1:min(length(lyr.p
 getoffset(lyr::Layer{<:Header})::Int64          = getoffset(lyr.header)
 getprotocol(lyr::Layer{<:Header})::Unsigned     = getprotocol(lyr.header)
 
+@debug "headers: Types and constructors defined"
+
 #=
 
     Header tree
@@ -197,13 +206,13 @@ end
 
 # Transport - 4
 
-UDP = Node(
+HEADER_UDP = Node(
     UDP_header,
     IPPROTO_UDP,
     []
 )
 
-TCP = Node(
+HEADER_TCP = Node(
     TCP_header,
     IPPROTO_TCP,
     []
@@ -211,16 +220,19 @@ TCP = Node(
 
 # Network - 3
 
-IPv4 = Node(
+HEADER_IPv4 = Node(
     IPv4_header,
     ETHERTYPE_IP,
-    [TCP, UDP]
+    [HEADER_TCP, HEADER_UDP]
 )
 
 # Link - 2
 
-Ethernet = Node(
+HEADER_Ethernet = Node(
     Ethernet_header,
     0x00,
-    [IPv4]
+    [HEADER_IPv4]
 )
+
+@debug "headers: Header tree defined" tree = HEADER_Ethernet
+@debug "headers: Done."
