@@ -1,3 +1,4 @@
+.gitignore
 cap.pcap
 capture.jl
 *.jls
