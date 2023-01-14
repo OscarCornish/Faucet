@@ -1,36 +1,14 @@
 #=
 
-    covert_channel.jl
-
-    Functions relating to actual covert communication:
-     - Sending covert packets
-     - Crafting covert packets
-     - Micro protocols
+    Covert channels
 
 =#
-
-@debug "covert_channel: Loading..."
 
 using AES
+using .Main: target
+using .Environment: Packet
 
-include("constants.jl")
-
-#=
-
-    Covert channel definitions:
-
-=#
-
-const CIPHER = AESCipher(;key_length=128, mode=AES.CBC, key=AES128Key(AES_KEY))
-enc(plaintext::Vector{UInt8})::Vector{UInt8} = encrypt(plaintext, CIPHER; iv=AES_IV).data
-
-# function create_15bit_payload(raw_payload::Vector{UInt8})::Vector{UInt16}
-#     bits = *(bitstring.(enc(raw_payload))...)
-#     padding = "0" ^ round(Int64, (1 - (length(bits) % 15) / 15) * 15)
-#     bits *= padding
-#     payload = [parse(UInt16, bits[i:min(i+14, end)], base=2) for i in 1:15:length(bits)]
-#     return payload
-# end
+enc(plaintext::Vector{UInt8})::Vector{UInt8} = encrypt(plaintext, AESCipher(;key_length=128, mode=AES.CBC, key=target.AES_PSK); iv=target.AES_IV).data
 
 struct covert_method
     name::String
@@ -43,6 +21,10 @@ struct covert_method
     decode_function::Function
 end
 
+"""
+    craft_meta_payload(payload, capacity)::String
+Pads payload with random bits to reach capacity
+"""
 function craft_meta_payload(payload::String, capacity::Int64)::String
     return payload * join([rand(("1","0")) for i ∈ 1:(capacity - length(payload))])
 end
@@ -51,6 +33,10 @@ function craft_meta_payload(payload::Unsigned, capacity::Int64)::String
     return craft_meta_payload(bitstring(payload)[end-MINIMUM_CHANNEL_SIZE+1:end], capacity)
 end
 
+"""
+    craft_meta_payload(method_index, capacity)::String
+Given index of covert method, craft a meta payload to tell the target which method to use
+"""
 function craft_meta_payload(method_index::Int64, capacity::Int64)::String
     payload = "1" * bitstring(UInt8(method_index))[end-2:end]
     return craft_meta_payload(payload, capacity)
@@ -72,6 +58,11 @@ end
 
 =#
 
+"""
+    tcp_ack_bounce_template(target_mac, target_ip, target_listen_port, server_mac, server_ip, server_port)
+
+Create the template for packets used in the TCP_ACK_Bounce covert method
+"""
 function tcp_ack_bounce_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_listen_port::UInt16,
         server_mac::NTuple{6, UInt8}, server_ip::UInt32, server_port::UInt16)
     return Dict{Symbol, Any}(
@@ -95,22 +86,40 @@ function tcp_ack_bounce_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32
 end
 tcp_ack_bounce_template(::NTuple{6, UInt8}, ::UInt32, ::UInt16, ::Nothing, ::Nothing, ::Nothing)::Nothing = nothing
 tcp_ack_bounce_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_listen_port::UInt16, q::Union{Channel{Packet}, Vector{Packet}})::Dict{Symbol, Any} = tcp_ack_bounce_template(target_mac, target_ip, target_listen_port, get_tcp_server(q)...)
-tcp_ack_bounce_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_listen_port::UInt16)::Dict{Symbol, Any} = tcp_ack_bounce_template(target_mac, target_ip, target_listen_port, get_tcp_server(q)...)
 tcp_ack_bounce_template(env::Dict{Symbol, Any}, q::Union{Channel{Packet}, Vector{Packet}}) = tcp_ack_bounce_template(env[:dest_first_hop_mac], env[:dest_ip].host, UInt16(env[:target].covert_options["TCP_ACK_Bounce"]["listen_port"]), get_tcp_server(q)...)
-tcp_ack_bounce_template(env::Dict{Symbol, Any}) = tcp_ack_bounce_template(env[:dest_first_hop_mac], env[:dest_ip].host, UInt16(env[:target].covert_options["TCP_ACK_Bounce"]["listen_port"]))
+# tcp_ack_bounce_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_listen_port::UInt16)::Dict{Symbol, Any} = tcp_ack_bounce_template(target_mac, target_ip, target_listen_port, get_tcp_server(q)...)
+# tcp_ack_bounce_template(env::Dict{Symbol, Any}) = tcp_ack_bounce_template(env[:dest_first_hop_mac], env[:dest_ip].host, UInt16(env[:target].covert_options["TCP_ACK_Bounce"]["listen_port"]))
 
-function tcp_ack_bounce_packet(payload::UInt16, template::Dict{Symbol, Any})
+# TODO: Change the definitions of covert methods to be different object types,
+#           then we can do init, encode and decode using multiple dispatch
+#           instead of passing functions around
+"""
+    tcp_ack_bounce_packet(payload::UInt16, template::Dict{Symbol, Any})
+
+Craft a packet using the template and payload,
+"""
+function tcp_ack_bounce_packet(payload::UInt16, template::Dict{Symbol, Any})::Vector{UInt8}
     template[:TransportKwargs][:seq] = payload - 1
     return craft_packet(;template...)
 end
-tcp_ack_bounce_packet(payload::String, template::Dict{Symbol, Any}) = tcp_ack_bounce_packet(parse(UInt16, payload, base=2), template)
+tcp_ack_bounce_packet(payload::String, template::Dict{Symbol, Any})::Vector{UInt8} = tcp_ack_bounce_packet(parse(UInt16, payload, base=2), template)
 
+"""
+    init_tcp_ack_bounce(net_env::Dict{Symbol, Any}, q::Union{Channel{Packet}, Vector{Packet}})::Dict{Symbol, Any}
+
+Retuns the parameters (other than payload) for the method function
+"""
 function init_tcp_ack_bounce(net_env::Dict{Symbol, Any}, q::Union{Channel{Packet}, Vector{Packet}})::Dict{Symbol, Any}
     return Dict{Symbol, Any}(
         :template => tcp_ack_bounce_template(net_env, q)
     )
 end
 
+"""
+    decode_tcp_ack_bounce(pkt::Packet)::UInt16
+
+Extract the covert payload from the packet
+"""
 function decode_tcp_ack_bounce(pkt::Packet)::UInt16
     # ethernet = pkt.payload
     # ip = ethernet.payload
@@ -119,8 +128,7 @@ function decode_tcp_ack_bounce(pkt::Packet)::UInt16
     return pkt.payload.payload.payload.header.ack_num
 end
 
-
-tcp_ack_bounce = covert_method(
+tcp_ack_bounce()::covert_method = covert_method(
     "TCP_ACK_Bounce",
     Layer_type(4), # transport
     "TCP_header",
@@ -136,6 +144,10 @@ tcp_ack_bounce = covert_method(
     this can be replaced with encrypted (so essentially random) data.
 =#
 
+"""
+    ipv4_identification_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_port::UInt16)::Dict{Symbol, Any}
+
+"""
 function ipv4_identification_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_port::UInt16)::Dict{Symbol, Any}
     return Dict{Symbol, Any}(
         :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
@@ -173,7 +185,7 @@ function decode_ipv4_identification(pkt::Packet)::UInt16
     return pkt.payload.payload.header.id
 end
 
-ipv4_identifaction = covert_method(
+ipv4_identifaction() = covert_method(
     "IPv4_identification",
     Layer_type(3), # network
     "IPv4_header",
@@ -184,30 +196,35 @@ ipv4_identifaction = covert_method(
     decode_ipv4_identification
 )
 
-covert_channels = (ipv4_identifaction, tcp_ack_bounce)
+covert_methods = [
+    tcp_ack_bounce(),
+    ipv4_identifaction(),
+]
 
+"""
+    determine_method(covert_methods::Vector{covert_method})::Tuple{covert_method, Int64}
 
-function determine_method(covert_methods::Tuple{covert_method})::Tuple{covert_method, Int64}
-    #=
-        Determine method:
+Determine which method is most suited to the current network environment, taking a list of methods and the network environment
+```
+Parameters:
+    - covert_methods : List of covert methods
 
-        Parameters:
-            - covert_methods : Tuple of covert methods
-
-        Returns:
-            - The method that is most likely to be used
-            - The intervals at which covert packets should be sent
-
-        Notes:
-            Uses a scoring algorithm:
-                - v : Number of packets with valid headers for this method
-                - c : Covertness of the method, higher is better
-                - s : Payload size of the method, higher is better
-                - score : (v * c) + s
-    =#
-
+Returns:
+    - The method that is most likely to be used
+    - The intervals at which covert packets should be sent
+```
+# Notes
+```text
+Uses a scoring algorithm:
+    - v : Number of packets with valid headers for this method
+    - c : Covertness of the method, higher is better
+    - s : Payload size of the method, higher is better
+score : (v * c) + s
+```
+"""
+function determine_method(covert_methods::Tuple{covert_method}, env::Dict{Symbol, Any})::Tuple{covert_method, Int64}
     # Get the queue data
-    q = get_queue_data(NET_ENV[:queue])
+    q = get_queue_data(env[:queue])
 
     layer_stats = [get_layer_stats(q, Layer_type(i)) for i ∈ 2:4]
 
@@ -230,36 +247,8 @@ function determine_method(covert_methods::Tuple{covert_method})::Tuple{covert_me
     target_packets_per_second = packets_per_second * PACKET_SEND_RATE
     target_interval = round(Int64, 1 / target_packets_per_second)
 
-
-    # Sort scores by second value in pair and return highest
+    # Sort scores by second value in pair (score) and return highest
     highest = first(sort(scores, by=x->x[2], rev=true))[1]
     return highest[1], target_interval
 end
-
-#=
-
-    Covert channel - Micro protocol
-    compatability verification
-
-=#
-
-@debug "covert_channel: Covert channels defined" covert_channels
-
-include("microprotocols.jl")
-
-# Verify that channels are large enough for microprotocols
-for cc ∈ covert_channels
-    if cc.payload_size < MINIMUM_CHANNEL_SIZE
-        error("Smallest supported covert channel is $MINIMUM_CHANNEL_SIZE bits")
-    end
-end
-
-# Verify that there aren't too many channels defined
-if length(covert_channels) > (SENTINEL - 1)
-    error("Only $(SENTINEL-1) covert channels are supported, increase 'MINIMUM_CHANNEL_SIZE'")
-end
-
-# TODO: Check that methods in target::Target are same as ones here, or a subset of.
-
-@debug "covert_channel: Covert channels verified, Done."
 
