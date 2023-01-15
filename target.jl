@@ -15,6 +15,9 @@ function Target(ip::AbstractString, covert_methods::Vector{String}, covert_optio
     return Target(IPv4(ip), covert_methods, covert_options, AES_PSK, AES_IV)
 end
 
+# TODO: Remove options from target, the method can be determined using the micro protocols
+#           however a port still must be specified
+
 target = Target(
     "192.168.0.1",
     ["TCP_ACK_Bounce", "IPv4_identification"],

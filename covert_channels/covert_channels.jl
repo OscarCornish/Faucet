@@ -10,15 +10,13 @@ using .Environment: Packet
 
 enc(plaintext::Vector{UInt8})::Vector{UInt8} = encrypt(plaintext, AESCipher(;key_length=128, mode=AES.CBC, key=target.AES_PSK); iv=target.AES_IV).data
 
-struct covert_method
+struct covert_method{Symbol}
     name::String
     layer::Layer_type
     type::String # What packet type are we aiming for?
     covertness::Int8 # 1 - 10
     payload_size::Int64 # bits / packet
-    init_function::FunctionFunction
-    encode_functions::Function
-    decode_function::Function
+    covert_method(name::String, layer::Layer_type, type::String, covertness::Int8, payload_size::Int64)::covert_method{Symbol} = new{Symbol(name)}(name, layer, type, covertness, payload_size)
 end
 
 """
@@ -58,147 +56,96 @@ end
 
 =#
 
-"""
-    tcp_ack_bounce_template(target_mac, target_ip, target_listen_port, server_mac, server_ip, server_port)
-
-Create the template for packets used in the TCP_ACK_Bounce covert method
-"""
-function tcp_ack_bounce_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_listen_port::UInt16,
-        server_mac::NTuple{6, UInt8}, server_ip::UInt32, server_port::UInt16)
-    return Dict{Symbol, Any}(
-        :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
-        :network_type => IPv4::Network_Type,
-        :transport_type => TCP::Transport_Type,
-        :EtherKWargs => Dict{Symbol, Any}(
-            :source_mac => target_mac,
-            :dest_mac => server_mac,
-        ),
-        :NetworkKwargs => Dict{Symbol, Any}(
-            :source_ip => target_ip,
-            :dest_ip => server_ip,
-        ),
-        :TransportKwargs => Dict{Symbol, Any}(
-            :flags => TCP_SYN::UInt8,
-            :sport => target_listen_port,
-            :dport => server_port,
-        )
-    )
-end
-tcp_ack_bounce_template(::NTuple{6, UInt8}, ::UInt32, ::UInt16, ::Nothing, ::Nothing, ::Nothing)::Nothing = nothing
-tcp_ack_bounce_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_listen_port::UInt16, q::Union{Channel{Packet}, Vector{Packet}})::Dict{Symbol, Any} = tcp_ack_bounce_template(target_mac, target_ip, target_listen_port, get_tcp_server(q)...)
-tcp_ack_bounce_template(env::Dict{Symbol, Any}, q::Union{Channel{Packet}, Vector{Packet}}) = tcp_ack_bounce_template(env[:dest_first_hop_mac], env[:dest_ip].host, UInt16(env[:target].covert_options["TCP_ACK_Bounce"]["listen_port"]), get_tcp_server(q)...)
-# tcp_ack_bounce_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_listen_port::UInt16)::Dict{Symbol, Any} = tcp_ack_bounce_template(target_mac, target_ip, target_listen_port, get_tcp_server(q)...)
-# tcp_ack_bounce_template(env::Dict{Symbol, Any}) = tcp_ack_bounce_template(env[:dest_first_hop_mac], env[:dest_ip].host, UInt16(env[:target].covert_options["TCP_ACK_Bounce"]["listen_port"]))
-
-# TODO: Change the definitions of covert methods to be different object types,
-#           then we can do init, encode and decode using multiple dispatch
-#           instead of passing functions around
-"""
-    tcp_ack_bounce_packet(payload::UInt16, template::Dict{Symbol, Any})
-
-Craft a packet using the template and payload,
-"""
-function tcp_ack_bounce_packet(payload::UInt16, template::Dict{Symbol, Any})::Vector{UInt8}
-    template[:TransportKwargs][:seq] = payload - 1
-    return craft_packet(;template...)
-end
-tcp_ack_bounce_packet(payload::String, template::Dict{Symbol, Any})::Vector{UInt8} = tcp_ack_bounce_packet(parse(UInt16, payload, base=2), template)
-
-"""
-    init_tcp_ack_bounce(net_env::Dict{Symbol, Any}, q::Union{Channel{Packet}, Vector{Packet}})::Dict{Symbol, Any}
-
-Retuns the parameters (other than payload) for the method function
-"""
-function init_tcp_ack_bounce(net_env::Dict{Symbol, Any}, q::Union{Channel{Packet}, Vector{Packet}})::Dict{Symbol, Any}
-    return Dict{Symbol, Any}(
-        :template => tcp_ack_bounce_template(net_env, q)
-    )
-end
-
-"""
-    decode_tcp_ack_bounce(pkt::Packet)::UInt16
-
-Extract the covert payload from the packet
-"""
-function decode_tcp_ack_bounce(pkt::Packet)::UInt16
-    # ethernet = pkt.payload
-    # ip = ethernet.payload
-    # tcp = ip.payload
-    # return tcp.header.ack
-    return pkt.payload.payload.payload.header.ack_num
-end
-
-tcp_ack_bounce()::covert_method = covert_method(
+tcp_ack_bounce()::covert_method{:TCP_ACK_BOUNCE} = covert_method(
     "TCP_ACK_Bounce",
     Layer_type(4), # transport
     "TCP_header",
     5,
     32, # 4 bytes / packet
-    init_tcp_ack_bounce,
-    tcp_ack_bounce_packet,
-    decode_tcp_ack_bounce
 )
+
+# Init function for TCP_ACK_Bounce
+function init(::covert_method{:TCP_ACK_Bounce}, net_env::Dict{Symbol, Any})::Dict{Symbol, Dict{Symbol, Any}}
+    dest_mac, dest_ip, dport = get_tcp_server(net_env[:queue])
+    return Dict{Symbol, Dict{Symbol, Any}}(
+        :template => Dict{Symbol, Any}(
+            :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
+            :network_type => IPv4::Network_Type,
+            :transport_type => TCP::Transport_Type,
+            :EtherKWargs => Dict{Symbol, Any}(
+                :source_mac => net_env[:dest_first_hop_mac],
+                :dest_mac => dest_mac
+            ),
+            :NetworkKwargs => Dict{Symbol, Any}(
+                :source_ip => net_env[:dest_ip].host,
+                :dest_ip => dest_ip
+            ),
+            :TransportKwargs => Dict{Symbol, Any}(
+                :flags => TCP_SYN::UInt8,
+                :sport => UInt16(net_env[:target].covert_options["TCP_ACK_Bounce"]["listen_port"]),
+                :dport => dport
+            )
+        ))
+end
+
+# Encode function for TCP_ACK_Bounce
+function encode(::covert_method{:TCP_ACK_Bounce}, payload::UInt16; template::Dict{Symbol, Any})::Vector{UInt8} 
+    template[:TransportKwargs][:seq] = payload - 1
+    return template
+end
+encode(::covert_method{:TCP_ACK_Bounce}, payload::String; template::Dict{Symbol, Any})::Vector{UInt8} = encode(::covert_method{:TCP_ACK_BOUNCE}, parse(UInt16, payload, base=2); template=template)
+
+# Decode function for TCP_ACK_Bounce
+decode(::covert_method{:TCP_ACK_Bounce}, pkt::Packet)::UInt16 = pkt.payload.payload.payload.header.ack_num
 
 #=
     IPv4_identification utilises the 'random' identification header,
     this can be replaced with encrypted (so essentially random) data.
 =#
 
-"""
-    ipv4_identification_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_port::UInt16)::Dict{Symbol, Any}
-
-"""
-function ipv4_identification_template(target_mac::NTuple{6, UInt8}, target_ip::UInt32, target_port::UInt16)::Dict{Symbol, Any}
-    return Dict{Symbol, Any}(
-        :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
-        :network_type => nt_IPv4::Network_Type,
-        :transport_type => TCP::Transport_Type,
-        :EtherKWargs => Dict{Symbol, Any}(
-            :dest_mac => target_mac,
-        ),
-        :NetworkKwargs => Dict{Symbol, Any}(
-            :dest_ip => target_ip,
-        ),
-        :TransportKwargs => Dict{Symbol, Any}(
-            :dport => target_port,
-        )
-    )
-end
-ipv4_identification_template(env::Dict{Symbol, Any}, ::Union{Channel{Packet}, Vector{Packet}})::Dict{Symbol, Any} = ipv4_identification_template(env[:dest_first_hop_mac], env[:dest_ip].host, UInt16(env[:target].covert_options["IPv4_identification"]["listen_port"]))
-
-function init_ipv4_identification(net_env::Dict{Symbol, Any}, q::Union{Channel{Packet}, Vector{Packet}})::Dict{Symbol, Any}
-    return Dict{Symbol, Any}(
-        :template => ipv4_identification_template(net_env, q)
-    )
-end
-
-function ipv4_identification_packet(payload::UInt16; template::Dict{Symbol, Any})
-    template[:NetworkKwargs][:identification] = payload
-    return craft_packet(;template...)
-end
-ipv4_identification_packet(payload::String; template::Dict{Symbol, Any}) = ipv4_identification_packet(parse(UInt16, payload, base=2); template=template)
-
-function decode_ipv4_identification(pkt::Packet)::UInt16
-    # ethernet = pkt.payload
-    # ip = ethernet.payload
-    # return ip.header.id
-    return pkt.payload.payload.header.id
-end
-
-ipv4_identifaction() = covert_method(
-    "IPv4_identification",
+ipv4_identifaction::covert_method{:IPv4_Identification} = covert_method(
+    "IPv4_Identification",
     Layer_type(3), # network
     "IPv4_header",
     8,
     16, # 2 bytes / packet
-    init_ipv4_identification,
-    ipv4_identification_packet,
-    decode_ipv4_identification
 )
 
+# Init function for IPv4_Identification
+function init(::covert_method{:IPV4_Identification}, net_env::Dict{Symbol, Any})::Dict{Symbol, Dict{Symbol, Any}}
+    target_mac, target_ip, target_port = net_env[:dest_first_hop_mac], net_env[:dest_ip].host, UInt16(net_env[:target].covert_options["IPv4_Identification"]["listen_port"])
+    return Dict{Symbol, Dict{Symbol, Any}}(
+        :template => Dict{Symbol, Any}(
+            :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
+            :network_type => nt_IPv4::Network_Type,
+            :transport_type => TCP::Transport_Type,
+            :EtherKWargs => Dict{Symbol, Any}(
+                :dest_mac => target_mac,
+            ),
+            :NetworkKwargs => Dict{Symbol, Any}(
+                :dest_ip => target_ip,
+            ),
+            :TransportKwargs => Dict{Symbol, Any}(
+                :dport => target_port,
+            )
+        )
+    )
+end
+
+# Encode function for IPv4_Identification
+function encode(::covert_method{:IPv4_Identification}, payload::UInt16; template::Dict{Symbol, Any})::Vector{UInt8}
+    template[:NetworkKwargs][:identification] = payload
+    return template
+end
+encode(::covert_method{:IPv4_Identification}, payload::String; template::Dict{Symbol, Any}) = encode(::covert_method{:IPv4_Identification}, parse(UInt16, payload, base=2); template=template)
+
+# Decode function for IPv4_Identification
+decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt16 = pkt.payload.payload.header.id
+
+
 covert_methods = [
-    tcp_ack_bounce(),
-    ipv4_identifaction(),
+    tcp_ack_bounce,
+    ipv4_identifaction,
 ]
 
 """
