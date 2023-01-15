@@ -1,2 +1,4 @@
-[deps]
-StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+name = "Faucet"
+uuid = "e3ade993-80ac-4aa0-850b-53e1c56b767e"
+authors = ["Oscar Cornish <oscar.cornish@outlook.com>"]
+version = "0.1.0"
