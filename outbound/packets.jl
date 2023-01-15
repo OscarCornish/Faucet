@@ -1,4 +1,4 @@
-using .CovertChannels: determine_method, covert_method, init, encode
+using ..CovertChannels: determine_method, covert_method, init, encode
 
 #=
 
@@ -226,10 +226,10 @@ function send_packet(packet::Vector{UInt8}, env::Dict{Symbol, Any})::Nothing
     return nothing
 end
 function send_meta_packet(m::covert_method, env::Dict{Symbol, Any}, payload::Union{String, Unsigned, Int64}, template::Dict{Symbol, Dict{Symbol, Any}})::Nothing
-    return send_packet(craft_packet(;encode(m, craft_meta_payload(payload, m.payload_size); template...)), env)
+    return send_packet(craft_packet(;encode(m, craft_meta_payload(payload, m.payload_size), template)...), env)
 end
 function send_packet(m::covert_method, env::Dict{Symbol, Any}, payload::String, template::Dict{Symbol, Dict{Symbol, Any}})::Nothing
-    return send_packet(craft_packet(;encode(m, payload; template...)), env)
+    return send_packet(craft_packet(;encode(m, payload, template)...), env)
 end
 
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})

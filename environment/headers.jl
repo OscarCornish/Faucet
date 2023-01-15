@@ -27,14 +27,6 @@ Generic types
 
 abstract type Header end
 
-@enum Layer_type begin
-    physical = 1    # Ethernet (on the wire only)
-    link = 2        # Ethernet
-    network = 3     # IPv4
-    transport = 4   # TCP
-    application = 5 # HTTP
-end
-
 # TODO: Don't have this as mutable, it is slower than a generic struct
 #        but not just making a new struct each time thats also slow...
 mutable struct Layer{T<:Header}
@@ -237,7 +229,7 @@ HEADER_IPv4 = Node(
 
 # Link - 2
 
-Ethernet = Node(
+HEADER_Ethernet = Node(
     Ethernet_header,
     0x00,
     [HEADER_IPv4]

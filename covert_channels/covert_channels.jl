@@ -4,19 +4,13 @@
 
 =#
 
-using AES
-using .Main: target
-using .Environment: Packet
-
-enc(plaintext::Vector{UInt8})::Vector{UInt8} = encrypt(plaintext, AESCipher(;key_length=128, mode=AES.CBC, key=target.AES_PSK); iv=target.AES_IV).data
-
 struct covert_method{Symbol}
     name::String
     layer::Layer_type
     type::String # What packet type are we aiming for?
     covertness::Int8 # 1 - 10
     payload_size::Int64 # bits / packet
-    covert_method(name::String, layer::Layer_type, type::String, covertness::Int8, payload_size::Int64)::covert_method{Symbol} = new{Symbol(name)}(name, layer, type, covertness, payload_size)
+    covert_method(name::String, layer::Layer_type, type::String, covertness::Int64, payload_size::Int64)::covert_method{Symbol} = new{Symbol(name)}(name, layer, type, Int8(covertness), payload_size)
 end
 
 """
@@ -56,7 +50,7 @@ end
 
 =#
 
-tcp_ack_bounce()::covert_method{:TCP_ACK_BOUNCE} = covert_method(
+tcp_ack_bounce::covert_method{:TCP_ACK_Bounce} = covert_method(
     "TCP_ACK_Bounce",
     Layer_type(4), # transport
     "TCP_header",
@@ -89,11 +83,11 @@ function init(::covert_method{:TCP_ACK_Bounce}, net_env::Dict{Symbol, Any})::Dic
 end
 
 # Encode function for TCP_ACK_Bounce
-function encode(::covert_method{:TCP_ACK_Bounce}, payload::UInt16; template::Dict{Symbol, Any})::Vector{UInt8} 
+function encode(::covert_method{:TCP_ACK_Bounce}, payload::UInt16; template::Dict{Symbol, Any})::Dict{Symbol, Any} 
     template[:TransportKwargs][:seq] = payload - 1
     return template
 end
-encode(::covert_method{:TCP_ACK_Bounce}, payload::String; template::Dict{Symbol, Any})::Vector{UInt8} = encode(::covert_method{:TCP_ACK_BOUNCE}, parse(UInt16, payload, base=2); template=template)
+encode(m::covert_method{:TCP_ACK_Bounce}, payload::String; template::Dict{Symbol, Any})::Dict{Symbol, Any} = encode(m, parse(UInt16, payload, base=2); template=template)
 
 # Decode function for TCP_ACK_Bounce
 decode(::covert_method{:TCP_ACK_Bounce}, pkt::Packet)::UInt16 = pkt.payload.payload.payload.header.ack_num
@@ -133,20 +127,20 @@ function init(::covert_method{:IPV4_Identification}, net_env::Dict{Symbol, Any})
 end
 
 # Encode function for IPv4_Identification
-function encode(::covert_method{:IPv4_Identification}, payload::UInt16; template::Dict{Symbol, Any})::Vector{UInt8}
+function encode(::covert_method{:IPv4_Identification}, payload::UInt16; template::Dict{Symbol, Any})::Dict{Symbol, Any}
     template[:NetworkKwargs][:identification] = payload
     return template
 end
-encode(::covert_method{:IPv4_Identification}, payload::String; template::Dict{Symbol, Any}) = encode(::covert_method{:IPv4_Identification}, parse(UInt16, payload, base=2); template=template)
+encode(m::covert_method{:IPv4_Identification}, payload::String; template::Dict{Symbol, Any})::Dict{Symbol, Any} = encode(m, parse(UInt16, payload, base=2); template=template)
 
 # Decode function for IPv4_Identification
 decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt16 = pkt.payload.payload.header.id
 
 
-covert_methods = [
+covert_methods = Vector{covert_method}([
     tcp_ack_bounce,
     ipv4_identifaction,
-]
+])
 
 """
     determine_method(covert_methods::Vector{covert_method})::Tuple{covert_method, Int64}

@@ -4,6 +4,8 @@
 
 =#
 
+using .Main: ENVIRONMENT_QUEUE_SIZE
+
 """
     errbuff_to_error(errbuf::Vector{UInt8})
 
@@ -13,6 +15,28 @@ function errbuff_to_error(errbuf::Vector{UInt8})
     # Raise error with null terminated string
     error(String(errbuf[1:findfirst(==(0), errbuf) - 1]))
 end 
+
+"""
+    pcap_lookupdev()::String
+
+Get the default device
+!!! Is a deprecated function, but is the simplest way to get the device
+"""
+function pcap_lookupdev()::String
+    # Error is returned into errbuff
+    errbuff = Vector{UInt8}(undef, PCAP_ERRBUF_SIZE)
+    # Get device
+    device = ccall(
+        (:pcap_lookupdev, "libpcap"),
+        Cstring,
+        (Ptr{UInt8},),
+        errbuff
+    )
+    if device == C_NULL
+        errbuff_to_error(errbuff)
+    end
+    return unsafe_string(device)
+end
 
 """
     pcap_open_live(device::String, snapshot_len::Int64, promisc::Bool)::Ptr{Pcap}
@@ -147,3 +171,4 @@ function init_queue(device::String)::Channel{Packet}
     @async pcap_loop(handle, -1, callback, C_NULL)
     return queue
 end
+init_queue()::Channel{Packet} = init_queue(pcap_lookupdev())

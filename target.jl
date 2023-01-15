@@ -1,18 +1,17 @@
-using Sockets
 using StaticArrays
 
 struct Target
-    ip::IPv4
+    ip::IPAddr
     covert_methods::Vector{String}
     covert_options::Dict{String, Any}
-    AES_PSK::SVector{16, UInt8}
-    AES_IV::SVector{16, UInt8}
-    function Target(ip::IPv4, covert_methods::Vector{String}, covert_options::Dict{String, Any}, AES_PSK::SVector{16, UInt8}, AES_IV::SVector{16, UInt8})
-        return new(ip, covert_methods, covert_options, AES_PSK, AES_IV)
+    AES_PSK::Vector{UInt8}
+    AES_IV::Vector{UInt8}
+    function Target(ip::IPv4Addr, covert_methods::Vector{String}, covert_options::Dict{String, Any}, AES_PSK::SVector{16, UInt8}, AES_IV::SVector{16, UInt8})
+        return new(ip, covert_methods, covert_options, Vector{UInt8}(AES_PSK), Vector{UInt8}(AES_IV))
     end
 end
 function Target(ip::AbstractString, covert_methods::Vector{String}, covert_options::Dict{String, Any}, AES_PSK::SVector{16, UInt8}, AES_IV::SVector{16, UInt8})
-    return Target(IPv4(ip), covert_methods, covert_options, AES_PSK, AES_IV)
+    return Target(IPv4Addr(ip), covert_methods, covert_options, AES_PSK, AES_IV)
 end
 
 # TODO: Remove options from target, the method can be determined using the micro protocols

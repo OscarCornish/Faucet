@@ -5,7 +5,8 @@ function mac_from_ip(ip::String)::NTuple{6, UInt8}
             return mac(match[:mac])
         end
     end
-    return nothing
+    @error "Could not find mac address for ip $ip" matches=collect(eachmatch(ip_a_regex, readchomp(`ip a`)))
+    error("Could not find mac address for ip $ip")
 end
 mac_from_ip(ip::IPAddr) = mac_from_ip(string(ip))
 
@@ -24,8 +25,8 @@ function get_ip_addr(dest_ip::String)::Tuple{String, Union{IPAddr, Nothing}, IPA
     for match ∈ eachmatch(ip_r_regex, readchomp(`ip r get $dest_ip`))
         if match[:dest_ip] == dest_ip
             iface = string(match[:if])
-            gw = isnothing(match[:gw]) ? nothing : parse(IPAddr, match[:gw])
-            src = parse(IPAddr, match[:src_ip])
+            gw = isnothing(match[:gw]) ? nothing : IPv4Addr(match[:gw])
+            src = IPv4Addr(match[:src_ip])
             return iface, gw, src
         end
     end
@@ -54,6 +55,9 @@ function get_socket()::IOStream
     fd = ccall(:socket, Cint, (Cint, Cint, Cint), AF_PACKET, SOCK_RAW, hton(ETH_P_ALL))
     return fdio(fd)
 end
+
+# TODO: Currently we get the iface from the target ip, but the queue is created
+#           with a specific iface, so we should use that.
 
 function init_environment(target::Target, q::Channel{Packet})::Dict{Symbol, Any}
     env = Dict{Symbol, Any}()

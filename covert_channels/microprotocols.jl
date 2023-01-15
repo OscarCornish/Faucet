@@ -62,7 +62,7 @@ end
 Check that the number of channels is less than the sentinel value, and therefore can be addressed in our microprotocols
 """
 function registered_channel_check(methods::Vector{covert_method})::Bool
-    if length(methods) => SENTINEL
+    if length(methods) >= SENTINEL
         @error "Too many registered channels" channels=length(methods) max=SENTINEL-1
         return false
     end
