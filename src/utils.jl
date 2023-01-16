@@ -18,7 +18,7 @@ IPv4Addr(host::Vector{UInt8})::IPv4Addr = IPv4Addr(unsafe_load(Ptr{UInt32}(Base.
 IPv4Addr(host::SVector{4, UInt8})::IPv4Addr = IPv4Addr(Vector{UInt8}(host))
 IPv4Addr(host::AbstractString)::IPv4Addr = IPv4Addr(SVector{4, UInt8}(parse.(UInt8, split(host, "."), base=10)))
 
-string(ip::IPv4Addr)::String = join(Int64.(to_bytes(ip.host)), ".")
+string(ip::IPv4Addr)::String = join(Int64.(reverse(to_bytes(ip.host))), ".")
 
 @enum Transport_Type begin
     TCP = 0x6
