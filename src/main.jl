@@ -23,8 +23,8 @@ end
 
 module CovertChannels
 
-    using .Main: IPAddr, IPv4Addr, Network_Type, Transport_Type, Layer_type
-    using ..Environment: Packet, get_tcp_server
+    using .Main: IPAddr, IPv4Addr, Network_Type, Transport_Type, Layer_type, IPv4, TCP
+    using ..Environment: Packet, get_tcp_server, TCP_SYN, get_queue_data, get_layer_stats
 
     export determine_method, covert_method, covert_methods, init, encode, decode
 
@@ -35,7 +35,8 @@ end
 
 module Outbound
 
-    using .Main: Target, target, IPAddr, IPv4Addr, Network_Type, Transport_Type, Link_Type
+    using .Main: Target, target, IPAddr, IPv4Addr, Network_Type, Transport_Type, Link_Type, Ethernet, IPv4, TCP, UDP, to_bytes
+    using ..CovertChannels: SENTINEL, craft_meta_payload
     using ..Environment: Packet
 
     export send_covert_payload, init_environment

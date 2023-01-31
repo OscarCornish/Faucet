@@ -55,39 +55,39 @@ tcp_ack_bounce::covert_method{:TCP_ACK_Bounce} = covert_method(
     Layer_type(4), # transport
     "TCP_header",
     5,
-    32, # 4 bytes / packet
+    32 # 4 bytes / packet
 )
 
 # Init function for TCP_ACK_Bounce
-function init(::covert_method{:TCP_ACK_Bounce}, net_env::Dict{Symbol, Any})::Dict{Symbol, Dict{Symbol, Any}}
+function init(::covert_method{:TCP_ACK_Bounce}, net_env::Dict{Symbol, Any})::Dict{Symbol, Any}
     dest_mac, dest_ip, dport = get_tcp_server(net_env[:queue])
-    return Dict{Symbol, Dict{Symbol, Any}}(
-        :template => Dict{Symbol, Any}(
-            :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
-            :network_type => IPv4::Network_Type,
-            :transport_type => TCP::Transport_Type,
-            :EtherKWargs => Dict{Symbol, Any}(
-                :source_mac => net_env[:dest_first_hop_mac],
-                :dest_mac => dest_mac
-            ),
-            :NetworkKwargs => Dict{Symbol, Any}(
-                :source_ip => net_env[:dest_ip].host,
-                :dest_ip => dest_ip
-            ),
-            :TransportKwargs => Dict{Symbol, Any}(
-                :flags => TCP_SYN::UInt8,
-                :sport => UInt16(net_env[:target].covert_options["TCP_ACK_Bounce"]["listen_port"]),
-                :dport => dport
-            )
-        ))
+    return Dict{Symbol, Any}(
+        :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
+        :env => net_env,
+        :network_type => IPv4::Network_Type,
+        :transport_type => TCP::Transport_Type,
+        :EtherKWargs => Dict{Symbol, Any}(
+            :source_mac => net_env[:dest_first_hop_mac],
+            :dest_mac => dest_mac
+        ),
+        :NetworkKwargs => Dict{Symbol, Any}(
+            :source_ip => net_env[:dest_ip].host,
+            :dest_ip => dest_ip
+        ),
+        :TransportKwargs => Dict{Symbol, Any}(
+            :flags => TCP_SYN::UInt16,
+            :sport => UInt16(net_env[:target].covert_options["TCP_ACK_Bounce"]["listen_port"]),
+            :dport => dport
+        )
+    )
 end
 
 # Encode function for TCP_ACK_Bounce
-function encode(::covert_method{:TCP_ACK_Bounce}, payload::UInt16; template::Dict{Symbol, Any})::Dict{Symbol, Any} 
-    template[:TransportKwargs][:seq] = payload - 1
+function encode(::covert_method{:TCP_ACK_Bounce}, payload::UInt32; template::Dict{Symbol, Any})::Dict{Symbol, Any} 
+    template[:TransportKwargs][:seq] = payload - 0x1
     return template
 end
-encode(m::covert_method{:TCP_ACK_Bounce}, payload::String; template::Dict{Symbol, Any})::Dict{Symbol, Any} = encode(m, parse(UInt16, payload, base=2); template=template)
+encode(m::covert_method{:TCP_ACK_Bounce}, payload::String; template::Dict{Symbol, Any})::Dict{Symbol, Any} = encode(m, parse(UInt32, payload, base=2); template=template)
 
 # Decode function for TCP_ACK_Bounce
 decode(::covert_method{:TCP_ACK_Bounce}, pkt::Packet)::UInt16 = pkt.payload.payload.payload.header.ack_num
@@ -106,22 +106,21 @@ ipv4_identifaction::covert_method{:IPv4_Identification} = covert_method(
 )
 
 # Init function for IPv4_Identification
-function init(::covert_method{:IPV4_Identification}, net_env::Dict{Symbol, Any})::Dict{Symbol, Dict{Symbol, Any}}
+function init(::covert_method{:IPV4_Identification}, net_env::Dict{Symbol, Any})::Dict{Symbol, Any}
     target_mac, target_ip, target_port = net_env[:dest_first_hop_mac], net_env[:dest_ip].host, UInt16(net_env[:target].covert_options["IPv4_Identification"]["listen_port"])
-    return Dict{Symbol, Dict{Symbol, Any}}(
-        :template => Dict{Symbol, Any}(
-            :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
-            :network_type => nt_IPv4::Network_Type,
-            :transport_type => TCP::Transport_Type,
-            :EtherKWargs => Dict{Symbol, Any}(
-                :dest_mac => target_mac,
-            ),
-            :NetworkKwargs => Dict{Symbol, Any}(
-                :dest_ip => target_ip,
-            ),
-            :TransportKwargs => Dict{Symbol, Any}(
-                :dport => target_port,
-            )
+    return Dict{Symbol, Dict{Symbol, Dict}}(
+        :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
+        :env => net_env,
+        :network_type => nt_IPv4::Network_Type,
+        :transport_type => TCP::Transport_Type,
+        :EtherKWargs => Dict{Symbol, Any}(
+            :dest_mac => target_mac,
+        ),
+        :NetworkKwargs => Dict{Symbol, Any}(
+            :dest_ip => target_ip,
+        ),
+        :TransportKwargs => Dict{Symbol, Any}(
+            :dport => target_port,
         )
     )
 end
@@ -163,10 +162,15 @@ Uses a scoring algorithm:
 score : (v * c) + s
 ```
 """
-function determine_method(covert_methods::Tuple{covert_method}, env::Dict{Symbol, Any})::Tuple{covert_method, Int64}
+function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any})::Tuple{covert_method, Int64}
     # Get the queue data
     q = get_queue_data(env[:queue])
 
+    if isempty(q)
+        @error "No packets in queue, cannot determine method"
+        error("Empty queue")
+    end
+    
     layer_stats = [get_layer_stats(q, Layer_type(i)) for i ∈ 2:4]
 
     scores = Vector{Pair{covert_method, Int64}}()

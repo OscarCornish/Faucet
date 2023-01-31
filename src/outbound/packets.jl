@@ -128,7 +128,7 @@ function craft_tcp_header(
             ack::Union{Nothing, UInt32} = nothing,
             data_offset::Union{Nothing, UInt8} = nothing,
             reserved::Union{Nothing, UInt8} = nothing,
-            flags::Union{Nothing, UInt8} = nothing,
+            flags::Union{Nothing, UInt16} = nothing,
             window::Union{Nothing, UInt16} = nothing,
             checksum::Union{Nothing, UInt16} = nothing,
             urgent_pointer::Union{Nothing, UInt16} = nothing,
@@ -191,6 +191,7 @@ function craft_packet(;
         )::Vector{UInt8}
 
     packet = Vector{UInt8}()
+    @info "Crafting packet" p=payload ek=EtherKWargs nk=NetworkKwargs tk=TransportKwargs
 
     # Craft Ethernet header
     ether_header = craft_datalink_header(Ethernet::Link_Type, network_type, env, EtherKWargs)
@@ -221,15 +222,15 @@ function craft_packet(;
     return packet
 end
 
-function send_packet(packet::Vector{UInt8}, env::Dict{Symbol, Any})::Nothing
-    write(env[:socket], packet)
+function send_packet(packet::Vector{UInt8}, net_env::Dict{Symbol, Any})::Nothing
+    write(net_env[:sock], packet)
     return nothing
 end
-function send_meta_packet(m::covert_method, env::Dict{Symbol, Any}, payload::Union{String, Unsigned, Int64}, template::Dict{Symbol, Dict{Symbol, Any}})::Nothing
-    return send_packet(craft_packet(;encode(m, craft_meta_payload(payload, m.payload_size), template)...), env)
+function send_meta_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::Union{String, Unsigned, Int64}, template::Dict{Symbol, Any})::Nothing
+    return send_packet(craft_packet(;encode(m, craft_meta_payload(payload, m.payload_size); template)...), net_env)
 end
-function send_packet(m::covert_method, env::Dict{Symbol, Any}, payload::String, template::Dict{Symbol, Dict{Symbol, Any}})::Nothing
-    return send_packet(craft_packet(;encode(m, payload, template)...), env)
+function send_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::String, template::Dict{Symbol, Any})::Nothing
+    return send_packet(craft_packet(;encode(m, payload, template)...), net_env)
 end
 
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})
@@ -245,7 +246,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     @info "Sent meta sentinel" via=method.name
     sleep(time_interval)
     while pointer <= lastindex(bits)
-        method_index, time_interval = determine_method(methods)::Tuple{Int64, Int64}
+        method_index, time_interval = determine_method(methods, net_env)::Tuple{Int64, Int64}
         if method_index != current_method_index
             # Send meta packet to tell target to switch methods
             send_meta_packet(method, net_env, method_index, method_kwargs)
@@ -266,4 +267,4 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         @debug "Sent payload packet" method=method.name payload=payload
         sleep(time_interval)
     end
-end
+end    

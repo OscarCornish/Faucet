@@ -1,4 +1,4 @@
-ENV["JULIA_DEBUG"] = "All"
+ENV["JULIA_DEBUG"] = "all"
 
 include("main.jl")
 
