@@ -11,7 +11,6 @@ const IPPROTO_TCP       = 0x06
 const IPPROTO_UDP       = 0x11
 
 const SOCK_RAW          = 17
-const AF_PACKET         = 3
 const ETH_P_ALL         = 0x0003
 
 const TCP_ACK           = 0x0010

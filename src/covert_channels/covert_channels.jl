@@ -18,6 +18,7 @@ end
 Pads payload with random bits to reach capacity
 """
 function craft_meta_payload(payload::String, capacity::Int64)::String
+    @debug "Crafting meta payload from string" payload capacity
     return payload * join([rand(("1","0")) for i ∈ 1:(capacity - length(payload))])
 end
 
@@ -84,6 +85,7 @@ end
 
 # Encode function for TCP_ACK_Bounce
 function encode(::covert_method{:TCP_ACK_Bounce}, payload::UInt32; template::Dict{Symbol, Any})::Dict{Symbol, Any} 
+    @debug "Encoding packet {TCP_ACK_Bounce}" payload
     template[:TransportKwargs][:seq] = payload - 0x1
     return template
 end
@@ -106,12 +108,12 @@ ipv4_identifaction::covert_method{:IPv4_Identification} = covert_method(
 )
 
 # Init function for IPv4_Identification
-function init(::covert_method{:IPV4_Identification}, net_env::Dict{Symbol, Any})::Dict{Symbol, Any}
+function init(::covert_method{:IPv4_Identification}, net_env::Dict{Symbol, Any})::Dict{Symbol, Any}
     target_mac, target_ip, target_port = net_env[:dest_first_hop_mac], net_env[:dest_ip].host, UInt16(net_env[:target].covert_options["IPv4_Identification"]["listen_port"])
-    return Dict{Symbol, Dict{Symbol, Dict}}(
+    return Dict{Symbol, Any}(
         :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
         :env => net_env,
-        :network_type => nt_IPv4::Network_Type,
+        :network_type => IPv4::Network_Type,
         :transport_type => TCP::Transport_Type,
         :EtherKWargs => Dict{Symbol, Any}(
             :dest_mac => target_mac,
@@ -127,18 +129,19 @@ end
 
 # Encode function for IPv4_Identification
 function encode(::covert_method{:IPv4_Identification}, payload::UInt16; template::Dict{Symbol, Any})::Dict{Symbol, Any}
+    @debug "Encoding packet {IPv4_Identification}" payload
     template[:NetworkKwargs][:identification] = payload
     return template
 end
 encode(m::covert_method{:IPv4_Identification}, payload::String; template::Dict{Symbol, Any})::Dict{Symbol, Any} = encode(m, parse(UInt16, payload, base=2); template=template)
 
 # Decode function for IPv4_Identification
-decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt16 = pkt.payload.payload.header.id
+decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt32 = pkt.payload.payload.header.id
 
 
 covert_methods = Vector{covert_method}([
-    tcp_ack_bounce,
     ipv4_identifaction,
+    tcp_ack_bounce
 ])
 
 """
@@ -162,15 +165,19 @@ Uses a scoring algorithm:
 score : (v * c) + s
 ```
 """
-function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any})::Tuple{covert_method, Int64}
+function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any})::Tuple{Int64, Int64}
     # Get the queue data
     q = get_queue_data(env[:queue])
 
     if isempty(q)
-        @error "No packets in queue, cannot determine method"
-        error("Empty queue")
+        @error "No packets in queue, cannot determine method" q
+        println("Queue @ ", Base.unsafe_convert(Ptr{Channel{Packet}}, Ref(env[:queue])))
+        #error("Empty queue")
     end
     
+    @warn "Hardcoded response to determine_method"
+    return 1, 1
+
     layer_stats = [get_layer_stats(q, Layer_type(i)) for i ∈ 2:4]
 
     scores = Vector{Pair{covert_method, Int64}}()
@@ -194,6 +201,8 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
 
     # Sort scores by second value in pair (score) and return highest
     highest = first(sort(scores, by=x->x[2], rev=true))[1]
+
+    # Pretty sure this should be the index of the highest score method, not the method itself
     return highest[1], target_interval
 end
 

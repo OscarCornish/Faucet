@@ -33,7 +33,7 @@ using .Main: MINIMUM_CHANNEL_SIZE, target
 const MP_MASK = 0b10000000
 const MP_DATA = 0x00
 const MP_META = 0x80
-const SENTINEL = parse(UInt16, "1"^(MINIMUM_CHANNEL_SIZE-1), base=2)
+const SENTINEL = parse(UInt16, "1"^(MINIMUM_CHANNEL_SIZE), base=2)
 
 #=
 

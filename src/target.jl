@@ -18,13 +18,13 @@ end
 #           however a port still must be specified
 
 target = Target(
-    "192.168.0.1",
-    ["TCP_ACK_Bounce", "IPv4_identification"],
+    "172.29.0.197",
+    ["IPv4_identification", "TCP_ACK_Bounce"],
     Dict{String, Any}(
         "TCP_ACK_Bounce" => Dict{String, Any}(
             "listen_port" => 12873
         ),
-        "IPv4_identification" => Dict{String, Any}(
+        "IPv4_Identification" => Dict{String, Any}(
             "listen_port" => 12874
         )
     ),

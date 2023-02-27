@@ -1,17 +1,15 @@
 # Do this in a better way, this is clunky
 function mac_from_ip(ip::String)::NTuple{6, UInt8}
-    for match ∈ eachmatch(ip_a_regex, readchomp(`ip a`))
-        if match[:addr] == ip
-            return mac(match[:mac])
-        end
-    end
-    @error "Could not find mac address for ip $ip" matches=collect(eachmatch(ip_a_regex, readchomp(`ip a`)))
-    error("Could not find mac address for ip $ip")
+    @warn "Using harcoded mac address" mac="7c:b2:7d:b8:8e:78"
+    # Harcode for now because regex fucked
+    return mac("7c:b2:7d:b8:8e:78")
 end
 mac_from_ip(ip::IPAddr) = mac_from_ip(string(ip))
 
 # Do this in a better way, this is clunky
 function subnet_mask(ip::String)::UInt32
+    @warn "Using harcoded subnet mask"
+    return subnet_mask(22)
     for match ∈ eachmatch(ip_a_regex, readchomp(`ip a`))
         if match[:addr] == ip
             return subnet_mask(parse(Int64, match[:cidr]))
@@ -34,6 +32,8 @@ end
 get_ip_addr(dest_ip::IPAddr)::Tuple{String, Union{IPAddr, Nothing}, IPAddr} = get_ip_addr(string(dest_ip))
 
 function first_hop_mac(target::String, iface::String)::NTuple{6, UInt8}
+    @warn "Using hardcoded first_hop"
+    return mac("7c:b2:7d:b8:8e:79")
     for match ∈ eachmatch(ip_neigh_regex, readchomp(`ip neigh`))
         if match[:ip] == target
             return mac(match[:mac])
@@ -46,15 +46,6 @@ function first_hop_mac(target::String, iface::String)::NTuple{6, UInt8}
     return nothing
 end
 first_hop_mac(target::IPAddr, iface::String)::NTuple{6, UInt8} = first_hop_mac(string(target), iface)
-
-"""
-    get_socket()
-Return a raw socket, wrapped into an `IOStream`
-"""
-function get_socket()::IOStream
-    fd = ccall(:socket, Cint, (Cint, Cint, Cint), AF_PACKET, SOCK_RAW, hton(ETH_P_ALL))
-    return fdio(fd)
-end
 
 # TODO: Currently we get the iface from the target ip, but the queue is created
 #           with a specific iface, so we should use that.
@@ -79,7 +70,6 @@ function init_environment(target::Target, q::Channel{Packet})::Dict{Symbol, Any}
     # Queue
     env[:queue] = q
     # Get socket
-    env[:sock] = open("dummy-socket", "w") # get_socket()
-    @info "Using dummy socket"
+    env[:sock] = get_socket()
     return env
 end

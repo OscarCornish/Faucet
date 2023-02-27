@@ -35,7 +35,9 @@ function pcap_lookupdev()::String
     if device == C_NULL
         errbuff_to_error(errbuff)
     end
-    return unsafe_string(device)
+    dev = unsafe_string(device)
+    @debug "pcap_lookupdev() returned '$dev'"
+    return dev
 end
 
 """
@@ -75,7 +77,6 @@ function pcap_loop(p::Ptr{Pcap}, cnt::Int64, callback::Function, user::Union{Ptr
         (Ptr{Pcap}, Int32, Ptr{Cvoid}, Ptr{Cuchar}),
         p, cnt, cfunc, user
     )
-    return nothing
 end
 
 """
@@ -145,25 +146,42 @@ end
 Get a callback function for pcap_loop, which will push packets to the queue
 """
 function get_callback(queue::Channel{Packet})::Function
-    function callback(::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})
+    function callback(::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})::Cvoid
         cap_hdr = unsafe_load(header)
-        pkt = Packet(cap_hdr, packet_from_pointer(packet, cap_hdr.caplen))
+        pkt = Packet(cap_hdr, packet_from_pointer(packet, cap_hdr.capture_length))
         if queue.n_avail_items == ENVIRONMENT_QUEUE_SIZE
             take!(queue)
         end
         put!(queue, pkt)
     end
     return callback
+end 
+
+function get_local_ip(device::String)::String
+    match = get_ip_from_dev(device)
+    #match = ip_a_search(:dev_name, device, :addr) <- doesn't work because regex is shit
+    if isnothing(match)
+        error("Could not find IP address for device: ", device)
+    end
+    return match
 end
+get_local_ip() = get_local_ip(pcap_lookupdev())
 
 """
     init_queue(device::String)::Channel{Packet}
 
 Given the device to open the queue on, return a Channel{Packet} which will be filled with packets
 """
-function init_queue(device::String)::Channel{Packet}
+function init_queue(device::String, bfp_filter_string::String="")::Channel{Packet}
     queue = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
     handle = pcap_open_live(device, -1, true)
+    # Set the filter if we have one
+    if bfp_filter_string != ""
+        program = Ref{bfp_prog}()
+        pcap_compile(handle, program, bfp_filter_string, Int32(1), UInt32(0))
+        pcap_setfilter(handle, program)
+        pcap_freecode(program)
+    end
     close_pcap() = pcap_breakloop(handle)
     # Add a hook to close the pcap on exit
     atexit(close_pcap)
@@ -171,4 +189,4 @@ function init_queue(device::String)::Channel{Packet}
     @async pcap_loop(handle, -1, callback, C_NULL)
     return queue
 end
-init_queue()::Channel{Packet} = init_queue(pcap_lookupdev())
+init_queue(bfp_filter::String="")::Channel{Packet} = init_queue(pcap_lookupdev(), bfp_filter)

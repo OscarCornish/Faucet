@@ -20,6 +20,9 @@ IPv4Addr(host::AbstractString)::IPv4Addr = IPv4Addr(SVector{4, UInt8}(parse.(UIn
 
 string(ip::IPv4Addr)::String = join(Int64.(reverse(to_bytes(ip.host))), ".")
 
+mac(s::AbstractString)::NTuple{6, UInt8} = tuple(map(x->parse(UInt8, x, base=16), split(String(s), ':'))...)
+
+
 @enum Transport_Type begin
     TCP = 0x6
     UDP = 0x11
@@ -39,4 +42,44 @@ end
     network = 3     # IPv4
     transport = 4   # TCP
     application = 5 # HTTP
+end
+
+const ip_a_regex = r"^(?<id>\d+): (?<dev_name>[a-zA-Z\d@]+): <[A-Z\-_ ,]+> mtu (?<mtu>\d+) .+\n\s+link\/(?<type>[a-z]+) (?<mac>[a-f\d:]{17}).+\n(?:(?:[\S ]*\n){0,3}    inet (?<addr>(?:\d{1,3}.){3}\d{1,3})\/(?<cidr>\d{1,2}).+\n.+|)"m
+const ip_r_regex = r"(?<dest_ip>(?:\d{1,3}\.){3}\d{1,3})(?: via (?<gw>(?:\d{1,3}\.){3}\d{1,3})|) dev (?<if>\w+) src (?<src_ip>(?:\d{1,3}\.){3}\d{1,3})"
+const ip_neigh_regex = r"(?<ip>(?:\d{1,3}\.){3}\d{1,3}) dev (?<if>\w+) lladdr (?<mac>[a-f\d:]{17})"
+const ip_from_dev_regex = r"inet (?<ip>(?:\d{1,3}\.){3}\d{1,3})\/(?<cidr>\d{1,2})"
+const mac_from_dev_regex = r"link\/(?<type>[a-z]+) (?<mac>[a-f\d:]{17})"
+
+function ip_a_search(search_key::Symbol, search_val::Any, output_key::Union{Symbol, Nothing})::Any
+    for match ∈ eachmatch(ip_a_regex, readchomp(`ip a`))
+        @info "match[search_key] ($(match[search_key])) == search_val ($(search_val))"
+        if match[search_key] == search_val
+            if output_key === nothing
+                return match
+            else
+                return match[output_key]
+            end
+        end
+    end
+    @warn "No match found for search key $(search_key) with value $(search_val)" output_key
+    return nothing
+end
+
+function get_ip_from_dev(dev::String)::String
+    output = readchomp(`ip a show dev $dev`)
+    return match(ip_from_dev_regex, output)[:ip]
+end
+
+function get_mac_from_dev(dev::String)::NTuple
+    output = readchomp(`ip a show dev $dev`)
+    return mac(match(ip_a_regex, output)[:mac])
+end
+
+function get_dev_from_mac(mac::NTuple{6, UInt8})::String
+    for match ∈ eachmatch(ip_a_regex, readchomp(`ip a`))
+        if mac == mac(match[:mac])
+            return match[:dev_name]
+        end
+    end
+    return ""
 end

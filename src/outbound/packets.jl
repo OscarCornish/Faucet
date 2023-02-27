@@ -73,7 +73,7 @@ function craft_ip_header(
     flags = isnothing(flags) ? 0b000 : flags & 0b111
     fragment_offset = isnothing(fragment_offset) ? 0x0000 : fragment_offset & 0x1fff
     append!(ip_header, to_net(flags << 13 | fragment_offset))
-    ttl = isnothing(ttl) ? 0xff : ttl
+    ttl = isnothing(ttl) ? 0xf3 : ttl
     append!(ip_header, to_net(ttl))
     append!(ip_header, to_net(UInt8(protocol)))
     checksum = isnothing(header_checksum) ? 0x0000 : header_checksum
@@ -197,12 +197,12 @@ function craft_packet(;
     ether_header = craft_datalink_header(Ethernet::Link_Type, network_type, env, EtherKWargs)
     append!(packet, ether_header)
     ether_length = length(packet)
-    @debug "Ethernet header: " len=ether_length packet
+    #@debug "Ethernet header: " len=ether_length packet
 
     # Get IP header
     network_header = craft_network_header(network_type, transport_type, env, NetworkKwargs)
     append!(packet, network_header)
-    @debug "↓ Network header: " len=length(packet) packet 
+    #@debug "↓ Network header: " len=length(packet) packet 
 
 
     transport_header = craft_transport_header(transport_type, env, packet, payload, TransportKwargs)
@@ -214,7 +214,7 @@ function craft_packet(;
 
     # Craft Transport header
     append!(packet, transport_header)
-    @debug "↓ Transport header: " len=length(packet) packet
+    #@debug "↓ Transport header: " len=length(packet) packet
     
     # Append payload
     append!(packet, payload)
@@ -223,22 +223,26 @@ function craft_packet(;
 end
 
 function send_packet(packet::Vector{UInt8}, net_env::Dict{Symbol, Any})::Nothing
-    write(net_env[:sock], packet)
+    bytes = sendto(net_env[:sock]::IOStream, packet, net_env[:interface]::String)
+    @assert (bytes == length(packet)) "Sent $bytes bytes, expected $(length(packet))"
     return nothing
 end
 function send_meta_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::Union{String, Unsigned, Int64}, template::Dict{Symbol, Any})::Nothing
     return send_packet(craft_packet(;encode(m, craft_meta_payload(payload, m.payload_size); template)...), net_env)
 end
 function send_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::String, template::Dict{Symbol, Any})::Nothing
-    return send_packet(craft_packet(;encode(m, payload, template)...), net_env)
+    return send_packet(craft_packet(;encode(m, payload; template)...), net_env)
 end
 
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})
-    payload = enc(raw_payload)
+    @warn "NOT ENCRYPTING PAYLOAD FOR TESTING PURPOSES"
+    #payload = enc(raw_payload)
+    payload = raw_payload
     bits = *(bitstring.(payload)...)
     pointer = 1
     current_method_index = 1
-    time_interval = 60 # Don't want packets to send until we have determined which type is best
+    time_interval = 5 # Don't want packets to send until we have determined which type is best
+    @warn "Inital time interval " time_interval
     # Send meta sentinel to target using methods[1]
     method = methods[current_method_index]
     method_kwargs = init(method, net_env)
@@ -246,7 +250,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     @info "Sent meta sentinel" via=method.name
     sleep(time_interval)
     while pointer <= lastindex(bits)
-        method_index, time_interval = determine_method(methods, net_env)::Tuple{Int64, Int64}
+        method_index, time_interval = determine_method(methods, net_env)
         if method_index != current_method_index
             # Send meta packet to tell target to switch methods
             send_meta_packet(method, net_env, method_index, method_kwargs)
@@ -258,7 +262,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         end
         # Send payload packet
         if pointer+method.payload_size-1 > lastindex(bits)
-            payload = "0" * bits[pointer:lastindex(bits)] * "0" * (method.payload_size - (lastindex(bits) - pointer + 1))
+            payload = "0" * bits[pointer:lastindex(bits)] * "0" ^ (method.payload_size - (lastindex(bits) - pointer + 1))
         else
             payload = "0" * bits[pointer:pointer+method.payload_size-1]
         end
