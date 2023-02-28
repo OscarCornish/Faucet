@@ -44,7 +44,6 @@ end
 
     - Target IP (In env)
     - Target Mac (in env)
-    - Open port on Target (in env (target))
     - TCP Server Mac (or first gw mac)
     - TCP Server IP
     - TCP Server Port
@@ -77,7 +76,6 @@ function init(::covert_method{:TCP_ACK_Bounce}, net_env::Dict{Symbol, Any})::Dic
         ),
         :TransportKwargs => Dict{Symbol, Any}(
             :flags => TCP_SYN::UInt16,
-            :sport => UInt16(net_env[:target].covert_options["TCP_ACK_Bounce"]["listen_port"]),
             :dport => dport
         )
     )
@@ -109,7 +107,7 @@ ipv4_identifaction::covert_method{:IPv4_Identification} = covert_method(
 
 # Init function for IPv4_Identification
 function init(::covert_method{:IPv4_Identification}, net_env::Dict{Symbol, Any})::Dict{Symbol, Any}
-    target_mac, target_ip, target_port = net_env[:dest_first_hop_mac], net_env[:dest_ip].host, UInt16(net_env[:target].covert_options["IPv4_Identification"]["listen_port"])
+    target_mac, target_ip = net_env[:dest_first_hop_mac], net_env[:dest_ip].host
     return Dict{Symbol, Any}(
         :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
         :env => net_env,
@@ -120,9 +118,6 @@ function init(::covert_method{:IPv4_Identification}, net_env::Dict{Symbol, Any})
         ),
         :NetworkKwargs => Dict{Symbol, Any}(
             :dest_ip => target_ip,
-        ),
-        :TransportKwargs => Dict{Symbol, Any}(
-            :dport => target_port,
         )
     )
 end
