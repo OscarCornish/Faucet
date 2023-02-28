@@ -6,13 +6,13 @@ include("t_utils.jl")
 @testset "Whole program" begin
 	# Setup
 	include("../src/main.jl")
-	using ..Inbound: init_reciever, listen
+	using ..Inbound: init_receiver, listen
 	using ..CovertChannels: covert_methods
 	using .Outbound: init_environment, send_covert_payload
 	using .Environment: init_queue
 
-	# Init reciever queue first, so it doesn't miss anything
-	queue = init_reciever(:local)
+	# Init receiver queue first, so it doesn't miss anything
+	queue = init_receiver(:local)
 
 	# Then setup the sender
 	net_env = init_environment(target, init_queue())

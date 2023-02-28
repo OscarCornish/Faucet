@@ -2,10 +2,10 @@ ENV["JULIA_DEBUG"] = "all"
 
 include("main.jl")
 
-using ..Inbound: init_reciever, listen
+using ..Inbound: init_receiver, listen
 using ..CovertChannels: covert_methods
 
-queue = init_reciever(:local)
+queue = init_receiver(:local)
 
 data = listen(queue, covert_methods)
 

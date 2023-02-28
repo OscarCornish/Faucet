@@ -55,7 +55,7 @@ module Inbound
     using ..Environment: init_queue, local_bound_traffic, Packet, get_local_ip
     using ..CovertChannels: SENTINEL, decode, MP_MASK, MP_DATA, MP_META, covert_method
 
-    export init_reciever
+    export init_receiver
 
     include("inbound/listen.jl")
 

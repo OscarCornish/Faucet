@@ -26,7 +26,7 @@ end
     
 # Get queue with filter
 
-function init_reciever(bfp_filter::Union{String, Symbol})::Channel{Packet}
+function init_receiver(bfp_filter::Union{String, Symbol})::Channel{Packet}
     if bfp_filter == :local
         bfp_filter = local_bound_traffic()
     end
@@ -113,7 +113,7 @@ end
 
 #### issues
 
-# How to handle multiple sentinels?  Do we need to?  Can we just limit to one sender one reciever
+# How to handle multiple sentinels?  Do we need to?  Can we just limit to one sender one receiver
 # What happens if the sender breaks off?  Do we need to handle this?  Can we just assume that the sender will not break off?
 
 

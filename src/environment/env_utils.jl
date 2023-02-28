@@ -68,9 +68,9 @@ function ioctl(sockfd::Cint, request::Culong, value::Ref{UInt8})::Nothing
 end
 
 function if_nametoindex(name::String)::Cuint
-    ret = ccall(:if_nametoindex, Cuint, (Cstring,), name)
-    if ret == 0
+    ifface_idx = ccall(:if_nametoindex, Cuint, (Cstring,), name)
+    if ifface_idx == 0
         @error "Failed to get interface index" errno=Base.Libc.errno()
     end
-    return ret
+    return ifface_idx
 end
