@@ -8,8 +8,8 @@ mac_from_ip(ip::IPAddr) = mac_from_ip(string(ip))
 
 # Do this in a better way, this is clunky
 function subnet_mask(ip::String)::UInt32
-    @warn "Using harcoded subnet mask"
-    return subnet_mask(22)
+    @warn "Using harcoded subnet mask" subnet_mask=24
+    return subnet_mask(24)
     for match ∈ eachmatch(ip_a_regex, readchomp(`ip a`))
         if match[:addr] == ip
             return subnet_mask(parse(Int64, match[:cidr]))
