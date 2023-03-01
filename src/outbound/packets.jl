@@ -223,11 +223,9 @@ function craft_packet(;
 end
 
 function send_packet(packet::Vector{UInt8}, net_env::Dict{Symbol, Any})::Nothing
-    @debug begin
-        ls = readchomp(Cmd(["ls", "-la", "/proc/\$\$/fd/$(fd(net_env[:sock]))"]))
-        "Sending packet" sock=net_env[:sock] interface=net_env[:interface] ls=ls
-    end
+    @debug "Sending packet" sock=net_env[:sock] interface=net_env[:interface]
     bytes = sendto(net_env[:sock]::IOStream, packet, net_env[:interface]::String)
+    @debug "Sent packet" bytes=bytes
     @assert (bytes == length(packet)) "Sent $bytes bytes, expected $(length(packet))"
     return nothing
 end
