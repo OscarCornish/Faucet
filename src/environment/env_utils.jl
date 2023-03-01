@@ -73,5 +73,15 @@ function if_nametoindex(name::String)::Cuint
     if ifface_idx == 0
         @error "Failed to get interface index" errno=Base.Libc.errno()
     end
+    @assert if_indextoname(ifface_idx) != name "Mismatch in interface id and name, got '$(if_indextoname(ifface_idx))' instead of '$name' ($ifface_idx)"
     return ifface_idx
+end
+
+function if_indextoname(index::Cuint)::String
+    name = Vector{UInt8}(undef, 16)
+    ret = ccall(:if_indextoname, Ptr{UInt8}, (Cuint, Ptr{UInt8}), index, name)
+    if ret == C_NULL
+        @error "Failed to get interface name" errno=Base.Libc.errno()
+    end
+    return String(name)
 end
