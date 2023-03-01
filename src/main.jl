@@ -10,6 +10,8 @@ include("constants.jl")
 include("utils.jl")
 include("target.jl")
 
+run(Cmd(["ping", "-c", "1", string(target.ip)]))
+
 module Environment
 
     using .Main: Layer_type, get_ip_from_dev, ip_a_search
