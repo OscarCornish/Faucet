@@ -58,12 +58,18 @@ end
     
 function process_packet(current_method::covert_method, packet::Packet)::Tuple{Symbol, Any}
     # decode packet
-    data = decode(current_method, packet)
-    # check if sentinel
-    if data & MP_MASK == MP_DATA
-        return (:data, process_data(data))
-    else # data & MP_MASK == MP_META
-        return process_meta(data)
+    try
+        data = decode(current_method, packet)
+    catch
+        @debug "Failed to decode packet"
+        return (:fail, nothing)
+    finally
+        # check if sentinel
+        if data & MP_MASK == MP_DATA
+            return (:data, process_data(data))
+        else # data & MP_MASK == MP_META
+            return process_meta(data)
+        end
     end
 end
 
