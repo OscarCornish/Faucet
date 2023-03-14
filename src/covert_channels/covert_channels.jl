@@ -18,7 +18,7 @@ end
 Pads payload with random bits to reach capacity
 """
 function craft_meta_payload(payload::String, capacity::Int64)::String
-    @debug "Crafting meta payload from string" payload capacity
+    #@debug "Crafting meta payload from string" payload capacity
     return payload * join([rand(("1","0")) for i ∈ 1:(capacity - length(payload))])
 end
 
@@ -83,7 +83,7 @@ end
 
 # Encode function for TCP_ACK_Bounce
 function encode(::covert_method{:TCP_ACK_Bounce}, payload::UInt32; template::Dict{Symbol, Any})::Dict{Symbol, Any} 
-    @debug "Encoding packet {TCP_ACK_Bounce}" payload
+    #@debug "Encoding packet {TCP_ACK_Bounce}" payload
     template[:TransportKwargs][:seq] = payload - 0x1
     return template
 end
@@ -124,7 +124,7 @@ end
 
 # Encode function for IPv4_Identification
 function encode(::covert_method{:IPv4_Identification}, payload::UInt16; template::Dict{Symbol, Any})::Dict{Symbol, Any}
-    @debug "Encoding packet {IPv4_Identification}" payload
+    #@debug "Encoding packet {IPv4_Identification}" payload
     template[:NetworkKwargs][:identification] = payload
     return template
 end
@@ -166,11 +166,10 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
 
     if isempty(q)
         @error "No packets in queue, cannot determine method" q
-        println("Queue @ ", Base.unsafe_convert(Ptr{Channel{Packet}}, Ref(env[:queue])))
         #error("Empty queue")
     end
     
-    @warn "Hardcoded response to determine_method"
+    #@warn "Hardcoded response to determine_method"
     return 1, 1
 
     layer_stats = [get_layer_stats(q, Layer_type(i)) for i ∈ 2:4]

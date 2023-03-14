@@ -11,6 +11,8 @@ function dec(data::Vector{String})::Vector{UInt8}
     for i ∈ 1:8:length(data)
         push!(bytes, parse(UInt8, data[i:i+7], base=2))
     end
+    @warn "No decrypting"
+    return bytes
     # Recreate cipher text
     ct = CipherText(
         bytes,
@@ -33,11 +35,11 @@ function init_receiver(bfp_filter::Union{String, Symbol})::Channel{Packet}
     if bfp_filter == :all
         bfp_filter = ""
     end
+    @debug "Initializing receiver" filter=bfp_filter
     if typeof(bfp_filter) != String
         throw(ArgumentError("bfp_filter must be a string, :local, or :all"))
     end
-    queue = init_queue(bfp_filter)
-    return queue
+    return init_queue(bfp_filter)
 end
 
 # Listen for sentinel on first method
@@ -80,26 +82,26 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
     data = Vector{String}()
     sentinel_recieved = false
     current_method = methods[1]
-    @debug "Listening for sentinel" current_method
+    #@debug "Listening for sentinel" current_method
     while true
         type, kwargs = process_packet(current_method, take!(queue))
         if type == :sentinel
             if sentinel_recieved # If we have already recieved a sentinel, we have finished the data
                 break
             else
-                @info "Sentined recieved, beginning data collection"
+                #@info "Sentined recieved, beginning data collection"
                 sentinel_recieved = true
             end
             sentinel_recieved = true
         elseif sentinel_recieved && type == :meta
-            @info "Switching to method" method=methods[kwargs]
+            #@info "Switching to method" method=methods[kwargs]
             current_method = methods[kwargs]
         elseif sentinel_recieved && type == :data
-            @info "Recieved data" data=kwargs
+            #@info "Recieved data" data=kwargs
             push!(data, kwargs)
         end
     end
-    @info "Data collection complete, decrypting..."
+    #@info "Data collection complete, decrypting..."
     return dec(data)
 end
 
@@ -109,7 +111,7 @@ function listen_forever(queue::Channel{Packet}, methods::Vector{covert_method})
     while true
         data = listen(queue, methods)
         file = "comms/$(now().instant.periods.value).bytes"
-        @info "Communication stream finished, writing to file" file=file
+        #@info "Communication stream finished, writing to file" file=file
         open(file, "w") do io
             write(io, data)
         end

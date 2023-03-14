@@ -10,7 +10,7 @@ include("constants.jl")
 include("utils.jl")
 include("target.jl")
 
-run(Cmd(["ping", "-c", "1", string(target.ip)]))
+#run(Cmd(["ping", "-c", "1", string(target.ip)]))
 
 module Environment
 

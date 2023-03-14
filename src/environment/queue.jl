@@ -36,8 +36,17 @@ function pcap_lookupdev()::String
         errbuff_to_error(errbuff)
     end
     dev = unsafe_string(device)
-    @debug "pcap_lookupdev() returned '$dev'"
+    #@debug "pcap_lookupdev() returned '$dev'"
     return dev
+end
+
+function get_dev()::String
+    if length(ARGS) ≥ 2  
+        #@debug "Using device from command line" dev=ARGS[2]
+        return ARGS[2]
+    else
+        return pcap_lookupdev()
+    end
 end
 
 """
@@ -165,10 +174,10 @@ function get_local_ip(device::String)::String
     end
     return match
 end
-get_local_ip() = get_local_ip(pcap_lookupdev())
+get_local_ip() = get_local_ip(get_dev())
 
 """
-    init_queue(device::String)::Channel{Packet}
+    init_queue(device::String, bfp_filter_string::String="")::Channel{Packet}
 
 Given the device to open the queue on, return a Channel{Packet} which will be filled with packets
 """
@@ -186,7 +195,8 @@ function init_queue(device::String, bfp_filter_string::String="")::Channel{Packe
     # Add a hook to close the pcap on exit
     atexit(close_pcap)
     callback = get_callback(queue)
+    #@debug "Creating pcap sniffer" device=device
     @async pcap_loop(handle, -1, callback, C_NULL)
     return queue
 end
-init_queue(bfp_filter::String="")::Channel{Packet} = init_queue(pcap_lookupdev(), bfp_filter)
+init_queue(bfp_filter::String="")::Channel{Packet} = init_queue(get_dev(), bfp_filter)
