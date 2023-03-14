@@ -46,7 +46,7 @@ else
     throw(ArgumentError("No target file provided"))
 end
 
-@info "Target file parsed" target
+#@info "Target file parsed" target
 
 # Example target file
 """

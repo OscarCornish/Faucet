@@ -35,7 +35,7 @@ function init_receiver(bfp_filter::Union{String, Symbol})::Channel{Packet}
     if bfp_filter == :all
         bfp_filter = ""
     end
-    @debug "Initializing receiver" filter=bfp_filter
+    #@debug "Initializing receiver" filter=bfp_filter
     if typeof(bfp_filter) != String
         throw(ArgumentError("bfp_filter must be a string, :local, or :all"))
     end
