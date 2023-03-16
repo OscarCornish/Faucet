@@ -3,15 +3,20 @@ using ..CovertChannels: determine_method, covert_method, init, encode
 # IP checksum
 function checksum(message::Vector{UInt8})::UInt16
     len = length(message)
-    checksum = sum([UInt32(message[i]) << 8 + UInt32(message[i+1]) for i in 1:2:lastindex(message)])
-    if len % 2 == 1
-        @warn "Odd length message, padding with 0"
-        checksum += (message[offset] >= 0 ? message[offset] : message[offset] ⊻ 0xffffff00) << 8
+    if len == 20
+        @warn "Message" message[1:10]
+        @warn "Message pt2" message[11:end]
     end
-    checksum = (checksum >>> 16) + (checksum & 0xffff)
-    checksum += (checksum >>> 16)
-    return (~checksum) & 0xffff
+    checksum = sum([UInt32(message[i]) << 8 + UInt32(message[i+1]) for i in 1:2:length(message)])
+    # checksum = sum([UInt32(message[i]) << 8 + UInt32(message[i+1]) for i in 1:2:lastindex(message)])
+    # if len % 2 == 1
+    #     @warn "Odd length message, padding with 0"
+    #     checksum += (message[offset] >= 0 ? message[offset] : message[offset] ⊻ 0xffffff00) << 8
+    # end
+    @warn "Checksum: " checksum cropped=(~((checksum & 0xffff) + (checksum >> 16)) & 0xffff)
+   checksum = ~((checksum & 0xffff) + (checksum >> 16)) & 0xffff
 end
+
 
 # TCP and UDP checksum
 function checksum(packet::Vector{UInt8}, tcp_header::Vector{UInt8}, payload::Vector{UInt8})::UInt16
@@ -22,10 +27,10 @@ function checksum(packet::Vector{UInt8}, tcp_header::Vector{UInt8}, payload::Vec
     buffer[1:4] = packet[27:30] # Source IP
     buffer[5:8] = packet[31:34] # Destination IP
     buffer[9] = UInt8(0) # Reserved 
-    buffer[10] = UInt8(6)#packet[24] # Protocol
-
-    buffer[11:12] = to_bytes(UInt16(segment_length)) # TCP segment length
+    buffer[10] = packet[24] # Protocol
     
+    buffer[11:12] = to_bytes(UInt16(segment_length)) # TCP segment length
+
     for i ∈ 1:length(tcp_header)
         buffer[12+i] = tcp_header[i]
     end
@@ -118,10 +123,6 @@ function craft_ip_header(
     append!(ip_header, to_net(source_ip))
     dest_ip = isnothing(dest_ip) ? env[:dest_ip] : dest_ip
     append!(ip_header, to_net(dest_ip))
-    # Calculate checksum with zeros, then replace after calculation
-    if isnothing(header_checksum)
-        ip_header[11:12] = to_net(checksum(ip_header))
-    end
     return ip_header
 end
 
@@ -231,8 +232,13 @@ function craft_packet(;
         len = to_net(UInt16(length(network_header) + length(transport_header) + length(payload)))
         #@debug "IPv4 total length: " len
         packet[ether_length+3:ether_length+4] = len
+        # Perform checksum after setting length
     end
-
+    if network_type == IPv4::Network_Type && packet[ether_length+11:ether_length+12] == [0x00, 0x00]
+        ip_header = packet[ether_length+1:ether_length+length(network_header)]
+        @warn ip_header
+        packet[ether_length+11:ether_length+12] = to_net(checksum(packet[ether_length+1:ether_length+length(network_header)]))
+    end
     # Craft Transport header
     append!(packet, transport_header)
     #@debug "↓ Transport header: " len=length(packet) packet
