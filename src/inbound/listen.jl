@@ -42,15 +42,8 @@ function init_receiver(bfp_filter::Union{String, Symbol})::Channel{Packet}
     return init_queue(bfp_filter)
 end
 
-# Listen for sentinel on first method
-
-function process_data(data::Unsigned)::String
-    # Convert to bitstring, and strip the microprotocol bits
-    return bitstring(data)[2:end]
-end
-
-function process_meta(data::Unsigned)::Tuple{Symbol, Any}
-    meta = bitstring(data)[1:MINIMUM_CHANNEL_SIZE]
+function process_meta(data::String)::Tuple{Symbol, Any}
+    meta = data[1:MINIMUM_CHANNEL_SIZE]
     if meta == SENTINEL
         return (:sentinel, nothing)
     else # Return 
@@ -61,16 +54,16 @@ end
 function process_packet(current_method::covert_method, packet::Packet)::Tuple{Symbol, Any}
     # decode packet
     try
-        data = decode(current_method, packet)
+        _ = decode(current_method, packet)
     catch e
-        @debug "Failed to decode packet"
+        @debug "Failed to decode packet" error=e
         return (:fail, nothing)
     end
-    data = decode(current_method, packet)
+    data = bitstring(decode(current_method, packet))
     # check if sentinel
-    if data & MP_MASK == MP_DATA
-        return (:data, process_data(data))
-    else # data & MP_MASK == MP_META
+    if data[1] == "0"
+        return (:data, data[2:end])
+    else
         return process_meta(data)
     end
 end
