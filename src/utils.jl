@@ -2,9 +2,9 @@ using StaticArrays
 import Base: string
 
 to_bytes(x::UInt8)::SVector{1, UInt8} = [x]
-to_bytes(x::UInt16)::SVector{2, UInt8} = unsafe_load(Ptr{SVector{2, UInt8}}(Base.unsafe_convert(Ptr{UInt16}, Ref(x))))
-to_bytes(x::UInt32)::SVector{4, UInt8} = unsafe_load(Ptr{SVector{4, UInt8}}(Base.unsafe_convert(Ptr{UInt32}, Ref(x))))
-to_bytes(x::UInt64)::SVector{8, UInt8} = unsafe_load(Ptr{SVector{8, UInt8}}(Base.unsafe_convert(Ptr{UInt64}, Ref(x))))
+to_bytes(x::UInt16)::SVector{2, UInt8} = reverse(unsafe_load(Ptr{SVector{2, UInt8}}(Base.unsafe_convert(Ptr{UInt16}, Ref(x)))))
+to_bytes(x::UInt32)::SVector{4, UInt8} = reverse(unsafe_load(Ptr{SVector{4, UInt8}}(Base.unsafe_convert(Ptr{UInt32}, Ref(x)))))
+to_bytes(x::UInt64)::SVector{8, UInt8} = reverse(unsafe_load(Ptr{SVector{8, UInt8}}(Base.unsafe_convert(Ptr{UInt64}, Ref(x)))))
 
 abstract type IPAddr end
 

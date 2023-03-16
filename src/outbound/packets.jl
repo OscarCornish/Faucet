@@ -1,5 +1,41 @@
 using ..CovertChannels: determine_method, covert_method, init, encode
 
+# IP checksum
+function checksum(message::Vector{UInt8})::UInt16
+    len = length(message)
+    checksum = sum([UInt32(message[i]) << 8 + UInt32(message[i+1]) for i in 1:2:lastindex(message)])
+    if len % 2 == 1
+        @warn "Odd length message, padding with 0"
+        checksum += (message[offset] >= 0 ? message[offset] : message[offset] ⊻ 0xffffff00) << 8
+    end
+    checksum = (checksum >>> 16) + (checksum & 0xffff)
+    checksum += (checksum >>> 16)
+    return (~checksum) & 0xffff
+end
+
+# TCP and UDP checksum
+function checksum(packet::Vector{UInt8}, tcp_header::Vector{UInt8}, payload::Vector{UInt8})::UInt16
+    header_length = length(tcp_header)
+    segment_length = header_length + length(payload)
+    buffer = zeros(UInt8, 12+segment_length)
+
+    buffer[1:4] = packet[27:30] # Source IP
+    buffer[5:8] = packet[31:34] # Destination IP
+    buffer[9] = UInt8(0) # Reserved 
+    buffer[10] = UInt8(6)#packet[24] # Protocol
+
+    buffer[11:12] = to_bytes(UInt16(segment_length)) # TCP segment length
+    
+    for i ∈ 1:length(tcp_header)
+        buffer[12+i] = tcp_header[i]
+    end
+
+    for i ∈ 1:length(payload)
+        buffer[12+header_length+i] = payload[i]
+    end     
+    return checksum(buffer)
+end
+
 #=
 
     Layer 2: Data link
@@ -76,15 +112,15 @@ function craft_ip_header(
     ttl = isnothing(ttl) ? 0xf3 : ttl
     append!(ip_header, to_net(ttl))
     append!(ip_header, to_net(UInt8(protocol)))
-    checksum = isnothing(header_checksum) ? 0x0000 : header_checksum
-    append!(ip_header, to_net(checksum))
+    _checksum = isnothing(header_checksum) ? 0x0000 : header_checksum
+    append!(ip_header, to_net(_checksum))
     source_ip = isnothing(source_ip) ? env[:src_ip] : source_ip
     append!(ip_header, to_net(source_ip))
     dest_ip = isnothing(dest_ip) ? env[:dest_ip] : dest_ip
     append!(ip_header, to_net(dest_ip))
     # Calculate checksum with zeros, then replace after calculation
     if isnothing(header_checksum)
-        ip_header[11:12] = to_net(ip_checksum(ip_header))
+        ip_header[11:12] = to_net(checksum(ip_header))
     end
     return ip_header
 end
@@ -105,19 +141,6 @@ function craft_transport_header(t::Transport_Type, env::Dict{Symbol, Any}, packe
     end
 end
 
-function tcp_checksum(packet::Vector{UInt8}, tcp_header::Vector{UInt8}, payload::Vector{UInt8})::UInt16
-    pseudo_header = Vector{UInt8}()
-    append!(pseudo_header, to_net(packet[13:16]))
-    append!(pseudo_header, to_net(packet[17:20]))
-    append!(pseudo_header, to_net(UInt8(0x0)))
-    append!(pseudo_header, to_net(UInt8(0x6)))
-    append!(pseudo_header, to_net(UInt16(length(tcp_header) + length(payload))))
-    checksum = sum([UInt32(pseudo_header[i]) << 8 + UInt32(pseudo_header[i+1]) for i in 1:2:lastindex(pseudo_header)])
-    checksum += sum([UInt32(tcp_header[i]) << 8 + UInt32(tcp_header[i+1]) for i in 1:2:lastindex(tcp_header)])
-    checksum += sum([UInt32(payload[i]) << 8 + UInt32(payload[i+1]) for i in 1:2:lastindex(payload)])
-    return ~UInt16((checksum >> 16) + (checksum & 0xFFFF))
-end
-
 function craft_tcp_header(
             packet::Vector{UInt8},
             payload::Vector{UInt8},
@@ -130,7 +153,7 @@ function craft_tcp_header(
             reserved::Union{Nothing, UInt8} = nothing,
             flags::Union{Nothing, UInt16} = nothing,
             window::Union{Nothing, UInt16} = nothing,
-            checksum::Union{Nothing, UInt16} = nothing,
+            _checksum::Union{Nothing, UInt16} = nothing,
             urgent_pointer::Union{Nothing, UInt16} = nothing,
             options::Union{Nothing, Vector{UInt8}} = nothing
         )::Vector{UInt8}
@@ -160,17 +183,15 @@ function craft_tcp_header(
     append!(tcp_header, to_net(do_flags))
     window = isnothing(window) ? 0xffff : window
     append!(tcp_header, to_net(window))
-    check = isnothing(checksum) ? 0x0000 : checksum
+    check = isnothing(_checksum) ? 0x0000 : checksum
     append!(tcp_header, to_net(check))
     urgent_pointer = isnothing(urgent_pointer) ? 0x0000 : urgent_pointer
     append!(tcp_header, to_net(urgent_pointer))
     if !isnothing(options)
         error("No options handling implemented")
     end
-    if isnothing(checksum)
-        check = tcp_checksum(packet, tcp_header, payload)
-        #@debug "Calculated TCP checksum: " checksum=check
-        tcp_header[17:18] = to_net(check)
+    if isnothing(_checksum)
+        tcp_header[17:18] = to_net(checksum(packet, tcp_header, payload))
     end
     return tcp_header
 end
