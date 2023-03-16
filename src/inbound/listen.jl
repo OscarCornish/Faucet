@@ -11,7 +11,7 @@ function dec(data::Vector{String})::Vector{UInt8}
     for i ∈ 1:8:length(data)
         push!(bytes, parse(UInt8, data[i:i+7], base=2))
     end
-    @warn "No decrypting"
+    #@warn "No decrypting"
     return bytes
     # Recreate cipher text
     ct = CipherText(
@@ -35,7 +35,7 @@ function init_receiver(bfp_filter::Union{String, Symbol})::Channel{Packet}
     if bfp_filter == :all
         bfp_filter = ""
     end
-    #@debug "Initializing receiver" filter=bfp_filter
+    @debug "Initializing receiver" filter=bfp_filter
     if typeof(bfp_filter) != String
         throw(ArgumentError("bfp_filter must be a string, :local, or :all"))
     end
@@ -82,7 +82,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
     data = Vector{String}()
     sentinel_recieved = false
     current_method = methods[1]
-    #@debug "Listening for sentinel" current_method
+    @debug "Listening for sentinel" current_method
     while true
         type, kwargs = process_packet(current_method, take!(queue))
         if type == :sentinel

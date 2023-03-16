@@ -52,7 +52,7 @@ const mac_from_dev_regex = r"link\/(?<type>[a-z]+) (?<mac>[a-f\d:]{17})"
 
 function ip_a_search(search_key::Symbol, search_val::Any, output_key::Union{Symbol, Nothing})::Any
     for match ∈ eachmatch(ip_a_regex, readchomp(`ip a`))
-        @info "match[search_key] ($(match[search_key])) == search_val ($(search_val))"
+        #@info "match[search_key] ($(match[search_key])) == search_val ($(search_val))"
         if match[search_key] == search_val
             if output_key === nothing
                 return match
@@ -61,7 +61,7 @@ function ip_a_search(search_key::Symbol, search_val::Any, output_key::Union{Symb
             end
         end
     end
-    @warn "No match found for search key $(search_key) with value $(search_val)" output_key
+    #@warn "No match found for search key $(search_key) with value $(search_val)" output_key
     return nothing
 end
 

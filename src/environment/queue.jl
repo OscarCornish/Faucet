@@ -36,13 +36,13 @@ function pcap_lookupdev()::String
         errbuff_to_error(errbuff)
     end
     dev = unsafe_string(device)
-    #@debug "pcap_lookupdev() returned '$dev'"
+    @debug "pcap_lookupdev() returned '$dev'"
     return dev
 end
 
 function get_dev()::String
     if length(ARGS) ≥ 2  
-        #@debug "Using device from command line" dev=ARGS[2]
+        @debug "Using device from command line" dev=ARGS[2]
         return ARGS[2]
     else
         return pcap_lookupdev()
@@ -195,7 +195,7 @@ function init_queue(device::String, bfp_filter_string::String="")::Channel{Packe
     # Add a hook to close the pcap on exit
     atexit(close_pcap)
     callback = get_callback(queue)
-    #@debug "Creating pcap sniffer" device=device
+    @debug "Creating pcap sniffer" device=device
     @async pcap_loop(handle, -1, callback, C_NULL)
     return queue
 end

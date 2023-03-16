@@ -2,21 +2,9 @@ using ..CovertChannels: determine_method, covert_method, init, encode
 
 # IP checksum
 function checksum(message::Vector{UInt8})::UInt16
-    len = length(message)
-    if len == 20
-        @warn "Message" message[1:10]
-        @warn "Message pt2" message[11:end]
-    end
     checksum = sum([UInt32(message[i]) << 8 + UInt32(message[i+1]) for i in 1:2:length(message)])
-    # checksum = sum([UInt32(message[i]) << 8 + UInt32(message[i+1]) for i in 1:2:lastindex(message)])
-    # if len % 2 == 1
-    #     @warn "Odd length message, padding with 0"
-    #     checksum += (message[offset] >= 0 ? message[offset] : message[offset] ⊻ 0xffffff00) << 8
-    # end
-    @warn "Checksum: " checksum cropped=(~((checksum & 0xffff) + (checksum >> 16)) & 0xffff)
    checksum = ~((checksum & 0xffff) + (checksum >> 16)) & 0xffff
 end
-
 
 # TCP and UDP checksum
 function checksum(packet::Vector{UInt8}, tcp_header::Vector{UInt8}, payload::Vector{UInt8})::UInt16
@@ -219,29 +207,27 @@ function craft_packet(;
     ether_header = craft_datalink_header(Ethernet::Link_Type, network_type, env, EtherKWargs)
     append!(packet, ether_header)
     ether_length = length(packet)
-    #@debug "Ethernet header: " len=ether_length packet
+    @debug "Ethernet header: " len=ether_length packet
 
     # Get IP header
     network_header = craft_network_header(network_type, transport_type, env, NetworkKwargs)
     append!(packet, network_header)
-    #@debug "↓ Network header: " len=length(packet) packet 
+    @debug "↓ Network header: " len=length(packet) packet 
 
 
     transport_header = craft_transport_header(transport_type, env, packet, payload, TransportKwargs)
     if network_type == IPv4::Network_Type && packet[17:18] == [0x00, 0x00]
         len = to_net(UInt16(length(network_header) + length(transport_header) + length(payload)))
-        #@debug "IPv4 total length: " len
+        @debug "IPv4 total length: " len
         packet[ether_length+3:ether_length+4] = len
         # Perform checksum after setting length
     end
     if network_type == IPv4::Network_Type && packet[ether_length+11:ether_length+12] == [0x00, 0x00]
-        ip_header = packet[ether_length+1:ether_length+length(network_header)]
-        @warn ip_header
         packet[ether_length+11:ether_length+12] = to_net(checksum(packet[ether_length+1:ether_length+length(network_header)]))
     end
     # Craft Transport header
     append!(packet, transport_header)
-    #@debug "↓ Transport header: " len=length(packet) packet
+    @debug "↓ Transport header: " len=length(packet) packet
     
     # Append payload
     append!(packet, payload)
@@ -250,9 +236,9 @@ function craft_packet(;
 end
 
 function send_packet(packet::Vector{UInt8}, net_env::Dict{Symbol, Any})::Nothing
-    #@debug "Sending packet" sock=net_env[:sock] interface=net_env[:interface]
+    @debug "Sending packet" sock=net_env[:sock] interface=net_env[:interface]
     bytes = sendto(net_env[:sock]::IOStream, packet, net_env[:interface]::String)
-    #@debug "Sent packet" bytes=bytes
+    @debug "Sent packet" bytes=bytes
     @assert (bytes == length(packet)) "Sent $bytes bytes, expected $(length(packet))"
     return nothing
 end
@@ -297,7 +283,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         end
         pointer += method.payload_size-1
         send_packet(method, net_env, payload, method_kwargs)
-        #@debug "Sent payload packet" method=method.name payload=payload
+        @debug "Sent payload packet" method=method.name payload=payload
         sleep(time_interval)
     end
 end    

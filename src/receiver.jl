@@ -7,7 +7,7 @@ using ..CovertChannels: covert_methods
 
 queue = init_receiver(:local)
 
-#@debug "Listening..."
+@debug "Listening..."
 
 data = listen(queue, covert_methods)
 

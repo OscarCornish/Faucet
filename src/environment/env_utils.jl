@@ -48,7 +48,7 @@ function sendto(sockfd::Integer, packet::Vector{UInt8}, interface_id::Integer)::
     destination_addr = NTuple{6, Cuchar}(packet[7:12])
     # Create sockaddr_ll
     sockaddr_ll = Sockaddr_ll(sll_ifindex=interface_id, sll_addr=destination_addr)
-    #@debug "Sending packet" packet=packet destination_addr=destination_addr interface_id=interface_id
+    @debug "Sending packet" packet=packet destination_addr=destination_addr interface_id=interface_id
     # Send packet
     bytes = ccall(:sendto, Cint, (Cint, Ptr{UInt8}, Csize_t, Cint, Ptr{Sockaddr_ll}, Cint), sockfd, packet, length(packet), 0, Ref(sockaddr_ll), sizeof(sockaddr_ll))
     if bytes == -1
