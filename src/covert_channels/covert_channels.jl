@@ -131,7 +131,7 @@ end
 encode(m::covert_method{:IPv4_Identification}, payload::String; template::Dict{Symbol, Any})::Dict{Symbol, Any} = encode(m, parse(UInt16, payload, base=2); template=template)
 
 # Decode function for IPv4_Identification
-decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt32 = pkt.payload.payload.header.id
+decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt16 = pkt.payload.payload.header.id
 
 
 covert_methods = Vector{covert_method}([
