@@ -176,12 +176,37 @@ function get_local_ip(device::String)::String
 end
 get_local_ip() = get_local_ip(get_dev())
 
+function alternative_sniffer(q::Channel{Packet}, socket::IOStream)::Nothing
+    place_holder = Capture_header(Timeval(0, 0), 0, 0)
+    while true
+        raw = read(socket)
+        pkt_pntr = Base.unsafe_convert(Ptr{UInt8}, raw)
+        pkt = Packet(place_holder, packet_from_pointer(pkt_pntr, Int32(length(raw))))
+        if q.n_avail_items == ENVIRONMENT_QUEUE_SIZE
+            show(stderr, "text/plain", "Queue full, taking")
+            take!(q)
+        end
+        put!(q, pkt)
+        show(stderr, "text/plain", ".")
+    end
+end
+
+
+function alternative()::Channel{Packet}
+    queue = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
+    socket = get_socket(Int32(17), Int32(3), Int32(0x0300))
+    @debug "Starting alternative sniffer" queue socket
+    @async alternative_sniffer(queue, socket)
+    return queue
+end
+
 """
     init_queue(device::String, bfp_filter_string::String="")::Channel{Packet}
 
 Given the device to open the queue on, return a Channel{Packet} which will be filled with packets
 """
 function init_queue(device::String, bfp_filter_string::String="")::Channel{Packet}
+    return alternative()
     queue = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
     handle = pcap_open_live(device, -1, true)
     # Set the filter if we have one

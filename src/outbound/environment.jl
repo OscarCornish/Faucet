@@ -75,6 +75,6 @@ function init_environment(target::Target, q::Channel{Packet})::Dict{Symbol, Any}
     # Queue
     env[:queue] = q
     # Get socket
-    env[:sock] = get_socket()
+    env[:sock] = get_socket(Int32(17), Int32(3), Int32(0xff00))
     return env
 end

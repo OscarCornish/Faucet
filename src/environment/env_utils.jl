@@ -11,9 +11,8 @@ const ETH_P_IP = 0x0800
 const ARPHRD_ETHER = Cushort(1)
 
 
-function get_socket()::IOStream
-    #fd = ccall(:socket, Cint, (Cint, Cint, Cint), AF_PACKET, SOCK_RAW, hton(IPPROTO_RAW))
-    fd = ccall(:socket, Cint, (Cint, Cint, Cint), Int32(17), Int32(3), 0xff00)
+function get_socket(domain::Cint, type::Cint, protocol::Cint)::IOStream
+    fd = ccall(:socket, Cint, (Cint, Cint, Cint), domain, type, protocol)
     if fd == -1
         @error "Failed to open socket" errno=Base.Libc.errno()
     end
