@@ -44,7 +44,7 @@ end
 
 function process_meta(data::String)::Tuple{Symbol, Any}
     meta = data[1:MINIMUM_CHANNEL_SIZE]
-    if meta == SENTINEL
+    if meta == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
         return (:sentinel, nothing)
     else # Return 
         return (:meta, parse(Int64, meta[2:end], base=2))
@@ -78,6 +78,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
     @debug "Listening for sentinel" current_method
     while true
         type, kwargs = process_packet(current_method, take!(queue))
+        @warn "Recieved packet" type=type kwargs=kwargs
         if type == :sentinel
             if sentinel_recieved # If we have already recieved a sentinel, we have finished the data
                 break

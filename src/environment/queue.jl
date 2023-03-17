@@ -156,12 +156,14 @@ Get a callback function for pcap_loop, which will push packets to the queue
 """
 function get_callback(queue::Channel{Packet})::Function
     function callback(::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})::Cvoid
+        sleep(0.00001)
         cap_hdr = unsafe_load(header)
         pkt = Packet(cap_hdr, packet_from_pointer(packet, cap_hdr.capture_length))
         if queue.n_avail_items == ENVIRONMENT_QUEUE_SIZE
             take!(queue)
         end
         put!(queue, pkt)
+        return nothing
     end
     return callback
 end 
@@ -175,6 +177,11 @@ function get_local_ip(device::String)::String
     return match
 end
 get_local_ip() = get_local_ip(get_dev())
+
+#=
+
+    Alternative to init_queue, that uses raw sockets instead of libpcap
+    not using as libpcap allows the use of BFP filters, but will leave anyway.
 
 function alternative_sniffer(q::Channel{Packet}, socket::IOStream)::Nothing
     place_holder = Capture_header(Timeval(0, 0), 0, 0)
@@ -200,13 +207,15 @@ function alternative()::Channel{Packet}
     return queue
 end
 
+=#
+
 """
     init_queue(device::String, bfp_filter_string::String="")::Channel{Packet}
 
 Given the device to open the queue on, return a Channel{Packet} which will be filled with packets
 """
 function init_queue(device::String, bfp_filter_string::String="")::Channel{Packet}
-    return alternative()
+    #return alternative()
     queue = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
     handle = pcap_open_live(device, -1, true)
     # Set the filter if we have one
@@ -221,7 +230,7 @@ function init_queue(device::String, bfp_filter_string::String="")::Channel{Packe
     atexit(close_pcap)
     callback = get_callback(queue)
     @debug "Creating pcap sniffer" device=device
-    @async pcap_loop(handle, -1, callback, C_NULL)
+    errormonitor(@async pcap_loop(handle, -1, callback, C_NULL))
     return queue
 end
 init_queue(bfp_filter::String="")::Channel{Packet} = init_queue(get_dev(), bfp_filter)
