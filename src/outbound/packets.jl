@@ -201,24 +201,21 @@ function craft_packet(;
         )::Vector{UInt8}
 
     packet = Vector{UInt8}()
-    #@info "Crafting packet" p=payload ek=EtherKWargs nk=NetworkKwargs tk=TransportKwargs
+    #@debug "Crafting packet" p=payload ek=EtherKWargs nk=NetworkKwargs tk=TransportKwargs
 
     # Craft Ethernet header
     ether_header = craft_datalink_header(Ethernet::Link_Type, network_type, env, EtherKWargs)
     append!(packet, ether_header)
     ether_length = length(packet)
-    @debug "Ethernet header: " len=ether_length packet
 
     # Get IP header
     network_header = craft_network_header(network_type, transport_type, env, NetworkKwargs)
     append!(packet, network_header)
-    @debug "↓ Network header: " len=length(packet) packet 
 
 
     transport_header = craft_transport_header(transport_type, env, packet, payload, TransportKwargs)
     if network_type == IPv4::Network_Type && packet[17:18] == [0x00, 0x00]
         len = to_net(UInt16(length(network_header) + length(transport_header) + length(payload)))
-        @debug "IPv4 total length: " len
         packet[ether_length+3:ether_length+4] = len
         # Perform checksum after setting length
     end
@@ -227,7 +224,6 @@ function craft_packet(;
     end
     # Craft Transport header
     append!(packet, transport_header)
-    @debug "↓ Transport header: " len=length(packet) packet
     
     # Append payload
     append!(packet, payload)
@@ -236,9 +232,7 @@ function craft_packet(;
 end
 
 function send_packet(packet::Vector{UInt8}, net_env::Dict{Symbol, Any})::Nothing
-    @debug "Sending packet" sock=net_env[:sock] interface=net_env[:interface]
     bytes = sendto(net_env[:sock]::IOStream, packet, net_env[:interface]::String)
-    @debug "Sent packet" bytes=bytes
     @assert (bytes == length(packet)) "Sent $bytes bytes, expected $(length(packet))"
     return nothing
 end
@@ -250,14 +244,14 @@ function send_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::Stri
 end
 
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})
-    #@warn "NOT ENCRYPTING PAYLOAD FOR TESTING PURPOSES"
+    @warn "NOT ENCRYPTING PAYLOAD FOR TESTING PURPOSES"
     #payload = enc(raw_payload)
     payload = raw_payload
     bits = *(bitstring.(payload)...)
     pointer = 1
     current_method_index = 1
     time_interval = 5 # Don't want packets to send until we have determined which type is best
-    #@warn "Inital time interval " time_interval
+    @warn "Inital time interval " time_interval
     # Send meta sentinel to target using methods[1]
     method = methods[current_method_index]
     method_kwargs = init(method, net_env)
@@ -273,13 +267,13 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
             method = methods[method_index]
             method_kwargs = init(method, net_env)
             current_method_index = method_index
-            #@info "Switched method" method=method.name interval=time_interval
+            @info "Switched method" method=method.name interval=time_interval
         end
         # Send payload packet
         if pointer+method.payload_size-1 > lastindex(bits)
             payload = "0" * bits[pointer:lastindex(bits)] * "0" ^ (method.payload_size - (lastindex(bits) - pointer + 1))
         else
-            payload = "0" * bits[pointer:pointer+method.payload_size-1]
+            payload = "0" * bits[pointer:pointer+method.payload_size-2]
         end
         pointer += method.payload_size-1
         send_packet(method, net_env, payload, method_kwargs)

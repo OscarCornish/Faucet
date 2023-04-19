@@ -61,7 +61,7 @@ function process_packet(current_method::covert_method, packet::Packet)::Tuple{Sy
     end
     data = bitstring(decode(current_method, packet))
     # check if sentinel
-    if data[1] == "0"
+    if data[1] == '0'
         return (:data, data[2:end])
     else
         return process_meta(data)
