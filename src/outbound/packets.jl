@@ -245,8 +245,7 @@ end
 
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})
     @warn "NOT ENCRYPTING PAYLOAD FOR TESTING PURPOSES"
-    #payload = enc(raw_payload)
-    payload = raw_payload
+    payload = enc(raw_payload)
     bits = *(bitstring.(payload)...)
     bits *= lstrip(bitstring(Int64(length(bits) / 8)), '0') # Append length of payload, we will use this to determine where the payload ends later
     pointer = 1

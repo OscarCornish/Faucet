@@ -1,7 +1,7 @@
 using AES
 using Dates
 
-function dec(data::Vector{String})::Vector{UInt8}
+function dec(data::String)::Vector{UInt8}
     # Remove padding by finding the length we added earlier
     for i = length(data):-1:1
         if i % 8 == 0
@@ -14,6 +14,7 @@ function dec(data::Vector{String})::Vector{UInt8}
             end
         end
     end
+    
     # Convert to bytes
     bytes = Vector{UInt8}()
     if length(data) % 8 != 0
@@ -21,18 +22,18 @@ function dec(data::Vector{String})::Vector{UInt8}
         error("Data length not a multiple of 8")
     end
     bytes = [parse(UInt8, data[i:i+7], base=2) for i ∈ 1:8:length(data)]
-    return bytes
-    # Recreate cipher text
-    ct = CipherText(
+
+    # Recreate cipher text & cipher
+    ct = AES.CipherText(
         bytes,
         target.AES_IV,
         length(target.AES_PSK) * 8,
         AES.CBC
     )
-    cipher = AESCipher(;key_length=128, mode=AES.CBC, key=target.AES_PSK)
-
+    cipher = AES.AESCipher(;key_length=128, mode=AES.CBC, key=target.AES_PSK)
+    
     # decrypt
-    return decrypt(ct, cipher)
+    return decrypt(ct, cipher).parent
 end
     
 # Get queue with filter

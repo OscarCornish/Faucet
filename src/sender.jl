@@ -10,7 +10,7 @@ using .Outbound: init_environment, send_covert_payload
 queue = init_queue()
 net_env = init_environment(target, queue)
 
-covert_payload = Vector{UInt8}("Hello covert world!")
+covert_payload = Vector{UInt8}("Hello encrypted world!")
 
 @debug "Sending covert payload" payload=covert_payload
 
