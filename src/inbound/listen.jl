@@ -2,16 +2,25 @@ using AES
 using Dates
 
 function dec(data::Vector{String})::Vector{UInt8}
+    # Remove padding by finding the length we added earlier
+    for i = length(data):-1:1
+        if i % 8 == 0
+            bitlen = lstrip(bitstring(Int64(i/8)), '0')
+            if length(data) - i >= length(bitlen)
+                if data[i+1:i+length(bitlen)] == bitlen
+                    data = data[1:i]
+                    break
+                end
+            end
+        end
+    end
     # Convert to bytes
     bytes = Vector{UInt8}()
     if length(data) % 8 != 0
         @error "Data is not a multiple of 8, either recieved additional packets, or missing some"
         error("Data length not a multiple of 8")
     end
-    for i ∈ 1:8:length(data)
-        push!(bytes, parse(UInt8, data[i:i+7], base=2))
-    end
-    #@warn "No decrypting"
+    bytes = [parse(UInt8, data[i:i+7], base=2) for i ∈ 1:8:length(data)]
     return bytes
     # Recreate cipher text
     ct = CipherText(
@@ -60,7 +69,7 @@ function process_packet(current_method::covert_method, packet::Packet)::Tuple{Sy
         return (:fail, nothing)
     end
     data = bitstring(decode(current_method, packet))
-    # check if sentinel
+    # check if data or meta
     if data[1] == '0'
         return (:data, data[2:end])
     else
@@ -72,7 +81,7 @@ end
 
 function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{UInt8}
     # Listen for sentinel
-    data = Vector{String}()
+    data = ""
     sentinel_recieved = false
     current_method = methods[1]
     @debug "Listening for sentinel" current_method
@@ -92,10 +101,10 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
             current_method = methods[kwargs]
         elseif sentinel_recieved && type == :data
             #@info "Recieved data" data=kwargs
-            push!(data, kwargs)
+            data *= kwargs
         end
     end
-    #@info "Data collection complete, decrypting..."
+    @info "Data collection complete, decrypting..."
     return dec(data)
 end
 

@@ -11,7 +11,8 @@ queue = init_receiver(:local)
 
 data = listen(queue, covert_methods)
 
-open("plaintext", "w") do io
+open("plaintext.txt", "w") do io
     write(io, data)
+    println(String(data))
 end
  

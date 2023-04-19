@@ -248,6 +248,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     #payload = enc(raw_payload)
     payload = raw_payload
     bits = *(bitstring.(payload)...)
+    bits *= lstrip(bitstring(Int64(length(bits) / 8)), '0') # Append length of payload, we will use this to determine where the payload ends later
     pointer = 1
     current_method_index = 1
     time_interval = 5 # Don't want packets to send until we have determined which type is best
@@ -271,7 +272,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         end
         # Send payload packet
         if pointer+method.payload_size-1 > lastindex(bits)
-            payload = "0" * bits[pointer:lastindex(bits)] * "0" ^ (method.payload_size - (lastindex(bits) - pointer + 1))
+            payload = rpad("0" * bits[pointer:lastindex(bits)], method.payload_size, '0')
         else
             payload = "0" * bits[pointer:pointer+method.payload_size-2]
         end
@@ -280,6 +281,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         @debug "Sent payload packet" method=method.name payload=payload
         sleep(time_interval)
     end
+    send_meta_packet(method, net_env, SENTINEL, method_kwargs)
     send_meta_packet(method, net_env, SENTINEL, method_kwargs)
     @info "Endded communication via SENTINEL" via=method.name
 end    
