@@ -280,4 +280,6 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         @debug "Sent payload packet" method=method.name payload=payload
         sleep(time_interval)
     end
+    send_meta_packet(method, net_env, SENTINEL, method_kwargs)
+    @info "Endded communication via SENTINEL" via=method.name
 end    
