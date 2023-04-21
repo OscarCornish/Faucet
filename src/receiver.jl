@@ -1,4 +1,4 @@
-ENV["JULIA_DEBUG"] = "all"
+#ENV["JULIA_DEBUG"] = "main"
 
 include("main.jl")
 
@@ -7,9 +7,12 @@ using ..CovertChannels: covert_methods
 
 queue = init_receiver(:local)
 
+@debug "Listening..."
+
 data = listen(queue, covert_methods)
 
-open("plaintext", "w") do io
+open("plaintext.txt", "w") do io
     write(io, data)
+    println(String(data))
 end
  

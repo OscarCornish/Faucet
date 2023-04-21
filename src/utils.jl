@@ -2,9 +2,9 @@ using StaticArrays
 import Base: string
 
 to_bytes(x::UInt8)::SVector{1, UInt8} = [x]
-to_bytes(x::UInt16)::SVector{2, UInt8} = unsafe_load(Ptr{SVector{2, UInt8}}(Base.unsafe_convert(Ptr{UInt16}, Ref(x))))
-to_bytes(x::UInt32)::SVector{4, UInt8} = unsafe_load(Ptr{SVector{4, UInt8}}(Base.unsafe_convert(Ptr{UInt32}, Ref(x))))
-to_bytes(x::UInt64)::SVector{8, UInt8} = unsafe_load(Ptr{SVector{8, UInt8}}(Base.unsafe_convert(Ptr{UInt64}, Ref(x))))
+to_bytes(x::UInt16)::SVector{2, UInt8} = reverse(unsafe_load(Ptr{SVector{2, UInt8}}(Base.unsafe_convert(Ptr{UInt16}, Ref(x)))))
+to_bytes(x::UInt32)::SVector{4, UInt8} = reverse(unsafe_load(Ptr{SVector{4, UInt8}}(Base.unsafe_convert(Ptr{UInt32}, Ref(x)))))
+to_bytes(x::UInt64)::SVector{8, UInt8} = reverse(unsafe_load(Ptr{SVector{8, UInt8}}(Base.unsafe_convert(Ptr{UInt64}, Ref(x)))))
 
 abstract type IPAddr end
 
@@ -52,7 +52,7 @@ const mac_from_dev_regex = r"link\/(?<type>[a-z]+) (?<mac>[a-f\d:]{17})"
 
 function ip_a_search(search_key::Symbol, search_val::Any, output_key::Union{Symbol, Nothing})::Any
     for match ∈ eachmatch(ip_a_regex, readchomp(`ip a`))
-        @info "match[search_key] ($(match[search_key])) == search_val ($(search_val))"
+        #@info "match[search_key] ($(match[search_key])) == search_val ($(search_val))"
         if match[search_key] == search_val
             if output_key === nothing
                 return match
@@ -61,7 +61,7 @@ function ip_a_search(search_key::Symbol, search_val::Any, output_key::Union{Symb
             end
         end
     end
-    @warn "No match found for search key $(search_key) with value $(search_val)" output_key
+    #@warn "No match found for search key $(search_key) with value $(search_val)" output_key
     return nothing
 end
 

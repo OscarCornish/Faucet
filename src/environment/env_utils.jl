@@ -11,9 +11,8 @@ const ETH_P_IP = 0x0800
 const ARPHRD_ETHER = Cushort(1)
 
 
-function get_socket()::IOStream
-    #fd = ccall(:socket, Cint, (Cint, Cint, Cint), AF_PACKET, SOCK_RAW, hton(IPPROTO_RAW))
-    fd = ccall(:socket, Cint, (Cint, Cint, Cint), Int32(17), Int32(3), 0xff00)
+function get_socket(domain::Cint, type::Cint, protocol::Cint)::IOStream
+    fd = ccall(:socket, Cint, (Cint, Cint, Cint), domain, type, protocol)
     if fd == -1
         @error "Failed to open socket" errno=Base.Libc.errno()
     end
@@ -72,5 +71,15 @@ function if_nametoindex(name::String)::Cuint
     if ifface_idx == 0
         @error "Failed to get interface index" errno=Base.Libc.errno()
     end
+    @assert if_indextoname(ifface_idx) != name "Mismatch in interface id and name, got '$(if_indextoname(ifface_idx))' instead of '$name' ($ifface_idx)"
     return ifface_idx
+end
+
+function if_indextoname(index::Cuint)::String
+    name = Vector{UInt8}(undef, 16)
+    ret = ccall(:if_indextoname, Ptr{UInt8}, (Cuint, Ptr{UInt8}), index, name)
+    if ret == C_NULL
+        @error "Failed to get interface name" errno=Base.Libc.errno()
+    end
+    return String(name)
 end

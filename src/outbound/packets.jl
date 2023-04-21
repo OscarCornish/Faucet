@@ -1,5 +1,34 @@
 using ..CovertChannels: determine_method, covert_method, init, encode
 
+# IP checksum
+function checksum(message::Vector{UInt8})::UInt16
+    checksum = sum([UInt32(message[i]) << 8 + UInt32(message[i+1]) for i in 1:2:length(message)])
+   checksum = ~((checksum & 0xffff) + (checksum >> 16)) & 0xffff
+end
+
+# TCP and UDP checksum
+function checksum(packet::Vector{UInt8}, tcp_header::Vector{UInt8}, payload::Vector{UInt8})::UInt16
+    header_length = length(tcp_header)
+    segment_length = header_length + length(payload)
+    buffer = zeros(UInt8, 12+segment_length)
+
+    buffer[1:4] = packet[27:30] # Source IP
+    buffer[5:8] = packet[31:34] # Destination IP
+    buffer[9] = UInt8(0) # Reserved 
+    buffer[10] = packet[24] # Protocol
+    
+    buffer[11:12] = to_bytes(UInt16(segment_length)) # TCP segment length
+
+    for i ∈ 1:length(tcp_header)
+        buffer[12+i] = tcp_header[i]
+    end
+
+    for i ∈ 1:length(payload)
+        buffer[12+header_length+i] = payload[i]
+    end     
+    return checksum(buffer)
+end
+
 #=
 
     Layer 2: Data link
@@ -76,16 +105,12 @@ function craft_ip_header(
     ttl = isnothing(ttl) ? 0xf3 : ttl
     append!(ip_header, to_net(ttl))
     append!(ip_header, to_net(UInt8(protocol)))
-    checksum = isnothing(header_checksum) ? 0x0000 : header_checksum
-    append!(ip_header, to_net(checksum))
+    _checksum = isnothing(header_checksum) ? 0x0000 : header_checksum
+    append!(ip_header, to_net(_checksum))
     source_ip = isnothing(source_ip) ? env[:src_ip] : source_ip
     append!(ip_header, to_net(source_ip))
     dest_ip = isnothing(dest_ip) ? env[:dest_ip] : dest_ip
     append!(ip_header, to_net(dest_ip))
-    # Calculate checksum with zeros, then replace after calculation
-    if isnothing(header_checksum)
-        ip_header[11:12] = to_net(ip_checksum(ip_header))
-    end
     return ip_header
 end
 
@@ -105,19 +130,6 @@ function craft_transport_header(t::Transport_Type, env::Dict{Symbol, Any}, packe
     end
 end
 
-function tcp_checksum(packet::Vector{UInt8}, tcp_header::Vector{UInt8}, payload::Vector{UInt8})::UInt16
-    pseudo_header = Vector{UInt8}()
-    append!(pseudo_header, to_net(packet[13:16]))
-    append!(pseudo_header, to_net(packet[17:20]))
-    append!(pseudo_header, to_net(UInt8(0x0)))
-    append!(pseudo_header, to_net(UInt8(0x6)))
-    append!(pseudo_header, to_net(UInt16(length(tcp_header) + length(payload))))
-    checksum = sum([UInt32(pseudo_header[i]) << 8 + UInt32(pseudo_header[i+1]) for i in 1:2:lastindex(pseudo_header)])
-    checksum += sum([UInt32(tcp_header[i]) << 8 + UInt32(tcp_header[i+1]) for i in 1:2:lastindex(tcp_header)])
-    checksum += sum([UInt32(payload[i]) << 8 + UInt32(payload[i+1]) for i in 1:2:lastindex(payload)])
-    return ~UInt16((checksum >> 16) + (checksum & 0xFFFF))
-end
-
 function craft_tcp_header(
             packet::Vector{UInt8},
             payload::Vector{UInt8},
@@ -130,7 +142,7 @@ function craft_tcp_header(
             reserved::Union{Nothing, UInt8} = nothing,
             flags::Union{Nothing, UInt16} = nothing,
             window::Union{Nothing, UInt16} = nothing,
-            checksum::Union{Nothing, UInt16} = nothing,
+            _checksum::Union{Nothing, UInt16} = nothing,
             urgent_pointer::Union{Nothing, UInt16} = nothing,
             options::Union{Nothing, Vector{UInt8}} = nothing
         )::Vector{UInt8}
@@ -160,17 +172,15 @@ function craft_tcp_header(
     append!(tcp_header, to_net(do_flags))
     window = isnothing(window) ? 0xffff : window
     append!(tcp_header, to_net(window))
-    check = isnothing(checksum) ? 0x0000 : checksum
+    check = isnothing(_checksum) ? 0x0000 : checksum
     append!(tcp_header, to_net(check))
     urgent_pointer = isnothing(urgent_pointer) ? 0x0000 : urgent_pointer
     append!(tcp_header, to_net(urgent_pointer))
     if !isnothing(options)
         error("No options handling implemented")
     end
-    if isnothing(checksum)
-        check = tcp_checksum(packet, tcp_header, payload)
-        @debug "Calculated TCP checksum: " checksum=check
-        tcp_header[17:18] = to_net(check)
+    if isnothing(_checksum)
+        tcp_header[17:18] = to_net(checksum(packet, tcp_header, payload))
     end
     return tcp_header
 end
@@ -191,30 +201,29 @@ function craft_packet(;
         )::Vector{UInt8}
 
     packet = Vector{UInt8}()
-    @info "Crafting packet" p=payload ek=EtherKWargs nk=NetworkKwargs tk=TransportKwargs
+    #@debug "Crafting packet" p=payload ek=EtherKWargs nk=NetworkKwargs tk=TransportKwargs
 
     # Craft Ethernet header
     ether_header = craft_datalink_header(Ethernet::Link_Type, network_type, env, EtherKWargs)
     append!(packet, ether_header)
     ether_length = length(packet)
-    #@debug "Ethernet header: " len=ether_length packet
 
     # Get IP header
     network_header = craft_network_header(network_type, transport_type, env, NetworkKwargs)
     append!(packet, network_header)
-    #@debug "↓ Network header: " len=length(packet) packet 
 
 
     transport_header = craft_transport_header(transport_type, env, packet, payload, TransportKwargs)
     if network_type == IPv4::Network_Type && packet[17:18] == [0x00, 0x00]
         len = to_net(UInt16(length(network_header) + length(transport_header) + length(payload)))
-        @debug "IPv4 total length: " len
         packet[ether_length+3:ether_length+4] = len
+        # Perform checksum after setting length
     end
-
+    if network_type == IPv4::Network_Type && packet[ether_length+11:ether_length+12] == [0x00, 0x00]
+        packet[ether_length+11:ether_length+12] = to_net(checksum(packet[ether_length+1:ether_length+length(network_header)]))
+    end
     # Craft Transport header
     append!(packet, transport_header)
-    #@debug "↓ Transport header: " len=length(packet) packet
     
     # Append payload
     append!(packet, payload)
@@ -236,9 +245,9 @@ end
 
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})
     @warn "NOT ENCRYPTING PAYLOAD FOR TESTING PURPOSES"
-    #payload = enc(raw_payload)
-    payload = raw_payload
+    payload = enc(raw_payload)
     bits = *(bitstring.(payload)...)
+    bits *= lstrip(bitstring(Int64(length(bits) / 8)), '0') # Append length of payload, we will use this to determine where the payload ends later
     pointer = 1
     current_method_index = 1
     time_interval = 5 # Don't want packets to send until we have determined which type is best
@@ -247,7 +256,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     method = methods[current_method_index]
     method_kwargs = init(method, net_env)
     send_meta_packet(method, net_env, SENTINEL, method_kwargs)
-    @info "Sent meta sentinel" via=method.name
+    #@info "Sent meta sentinel" via=method.name
     sleep(time_interval)
     while pointer <= lastindex(bits)
         method_index, time_interval = determine_method(methods, net_env)
@@ -262,13 +271,16 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         end
         # Send payload packet
         if pointer+method.payload_size-1 > lastindex(bits)
-            payload = "0" * bits[pointer:lastindex(bits)] * "0" ^ (method.payload_size - (lastindex(bits) - pointer + 1))
+            payload = rpad("0" * bits[pointer:lastindex(bits)], method.payload_size, '0')
         else
-            payload = "0" * bits[pointer:pointer+method.payload_size-1]
+            payload = "0" * bits[pointer:pointer+method.payload_size-2]
         end
         pointer += method.payload_size-1
         send_packet(method, net_env, payload, method_kwargs)
         @debug "Sent payload packet" method=method.name payload=payload
         sleep(time_interval)
     end
+    send_meta_packet(method, net_env, SENTINEL, method_kwargs)
+    send_meta_packet(method, net_env, SENTINEL, method_kwargs)
+    @info "Endded communication via SENTINEL" via=method.name
 end    
