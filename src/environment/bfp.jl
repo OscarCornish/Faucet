@@ -14,7 +14,7 @@ struct bfp_prog
     insns::Ptr{bfp_insn}
 end
 
-function local_bound_traffic(local_ip::String)
+function local_bound_traffic(local_ip::String)::String
     return "dst host $local_ip"
 end
 local_bound_traffic() = local_bound_traffic(get_local_ip())

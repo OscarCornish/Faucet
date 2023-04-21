@@ -13,28 +13,6 @@ struct covert_method{Symbol}
     covert_method(name::String, layer::Layer_type, type::String, covertness::Int64, payload_size::Int64)::covert_method{Symbol} = new{Symbol(name)}(name, layer, type, Int8(covertness), payload_size)
 end
 
-"""
-    craft_meta_payload(payload, capacity)::String
-Pads payload with random bits to reach capacity
-"""
-function craft_meta_payload(payload::String, capacity::Int64)::String
-    @debug "Crafting meta payload from string" payload capacity
-    return payload * join([rand(("1","0")) for i ∈ 1:(capacity - length(payload))])
-end
-
-function craft_meta_payload(payload::Unsigned, capacity::Int64)::String
-    return craft_meta_payload(bitstring(payload)[end-MINIMUM_CHANNEL_SIZE+1:end], capacity)
-end
-
-"""
-    craft_meta_payload(method_index, capacity)::String
-Given index of covert method, craft a meta payload to tell the target which method to use
-"""
-function craft_meta_payload(method_index::Int64, capacity::Int64)::String
-    payload = "1" * bitstring(UInt8(method_index))[end-2:end]
-    return craft_meta_payload(payload, capacity)
-end
-
 #=
     TCP_ACK_Bounce abuses the TCP handshake,
     by spoofing the source to the destination and sending a request to a server,

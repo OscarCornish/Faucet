@@ -1,33 +1,38 @@
-# Do this in a better way, this is clunky
-function mac_from_ip(ip::String)::NTuple{6, UInt8}
-    #@warn "Using harcoded mac address mac = 7c:b2:7d:b8:8e:78"
-    # Harcode for now because regex fucked
-    return mac("7c:b2:7d:b8:8e:78")
+function mac_from_ip(ip::String, type::Symbol=:local)::NTuple{6, UInt8}
+    if type == :local
+        for match ∈ eachmatch(ip_address_regex, readchomp(`ip a`))
+            if match[:ip] == ip
+                return mac(match[:mac])
+            end
+        end
+    elseif type == :remote
+        cmd_output = readchomp(`ip neigh`)
+        for match ∈ eachmatch(ip_neigh_regex, cmd_output)
+            if match[:ip] == ip
+                return mac(match[:mac])
+            end
+        end
+    else
+        error("Invalid type: $type")
+    end
+    error("Unable to find MAC address for IP: $ip")
 end
-mac_from_ip(ip::IPAddr) = mac_from_ip(string(ip))
+mac_from_ip(ip::IPAddr, type::Symbol=:local)::NTuple{6, UInt8} = mac_from_ip(string(ip), type)
 
-# Do this in a better way, this is clunky
 function subnet_mask(ip::String)::UInt32
-    #@warn "Using harcoded subnet mask" subnet_mask=24
-    return subnet_mask(24)
-    for match ∈ eachmatch(ip_a_regex, readchomp(`ip a`))
-        if match[:addr] == ip
-            return subnet_mask(parse(Int64, match[:cidr]))
+    for match ∈ eachmatch(ip_address_regex, readchomp(`ip a`))
+        if match[:ip] == ip
+            return subnet_mask(parse(Int64, match[:subnet]))
         end
     end
-    return nothing
+    error("Unable to find subnet mask for IP: $ip")
 end
 subnet_mask(ip::IPAddr) = subnet_mask(string(ip))
 
 function get_ip_addr(dest_ip::String)::Tuple{String, Union{IPAddr, Nothing}, IPAddr} # Interface, Gateway, Source
-    iface = "eth0"
-    gw = nothing
-    src = IPv4Addr("10.0.0.1")
-    #@warn "Using hardcoded response to get_ip_addr src=10.0.0.1"
-    return  iface, gw, src
-    for match ∈ eachmatch(ip_r_regex, readchomp(`ip r get $dest_ip`))
+    for match ∈ eachmatch(ip_route_regex, readchomp(`ip r get $dest_ip`))
         if match[:dest_ip] == dest_ip
-            iface = string(match[:if])
+            iface = string(match[:iface])
             gw = isnothing(match[:gw]) ? nothing : IPv4Addr(match[:gw])
             src = IPv4Addr(match[:src_ip])
             return iface, gw, src
@@ -37,23 +42,35 @@ end
 get_ip_addr(dest_ip::IPAddr)::Tuple{String, Union{IPAddr, Nothing}, IPAddr} = get_ip_addr(string(dest_ip))
 
 function first_hop_mac(target::String, iface::String)::NTuple{6, UInt8}
-    #@warn "Using hardcoded first_hop"
-    return mac("7c:b2:7d:b8:8e:79")
-    for match ∈ eachmatch(ip_neigh_regex, readchomp(`ip neigh`))
-        if match[:ip] == target
-            return mac(match[:mac])
+    searched = false
+    while true
+        try
+            return mac_from_ip(target, :remote)
+        catch e
+            @warn "got error" e
+            if !searched
+                searched = true
+                readchomp(`arping -I $iface -c 1 $target`)
+                sleep(2) # Give it fair time to reply
+            else
+                error("Address unreachable")
+                break 
+            end
         end
     end
-    # Force new arp entry
-    # TODO: Test if `ip neigh get $addr dev $iface` will perform a new request
-    #       in the event the external host is not in the ip neigh table
-    #x = readchomp(`ip `)
     return nothing
 end
 first_hop_mac(target::IPAddr, iface::String)::NTuple{6, UInt8} = first_hop_mac(string(target), iface)
 
-# TODO: Currently we get the iface from the target ip, but the queue is created
-#           with a specific iface, so we should use that.
+function get_dev_from_ip(ip::String)::String
+    for match ∈ eachmatch(ip_address_regex, readchomp(`ip a`))
+        if match[:ip] == ip
+            return string(match[:iface])
+        end
+    end
+    error("Unable to find device for IP: $ip")
+end
+get_dev_from_ip(ip::IPAddr)::String = get_dev_from_ip(string(ip))
 
 function init_environment(target::Target, q::Channel{Packet})::Dict{Symbol, Any}
     env = Dict{Symbol, Any}()

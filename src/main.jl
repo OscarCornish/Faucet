@@ -40,7 +40,7 @@ end
 module Outbound
 
     using .Main: Target, target, IPAddr, IPv4Addr, Network_Type, Transport_Type, Link_Type, Ethernet, IPv4, TCP, UDP, to_bytes, ip_a_regex, ip_r_regex, ip_neigh_regex, mac
-    using ..CovertChannels: SENTINEL, craft_meta_payload
+    using ..CovertChannels: craft_change_method_payload, craft_discard_chunk_payload, craft_sentinel_payload
     using ..Environment: Packet, get_socket, sendto
 
     export send_covert_payload, init_environment
@@ -55,7 +55,8 @@ module Inbound
 
     using .Main: MINIMUM_CHANNEL_SIZE, target
     using ..Environment: init_queue, local_bound_traffic, Packet, get_local_ip
-    using ..CovertChannels: SENTINEL, decode, MP_MASK, MP_DATA, MP_META, covert_method
+    using ..CovertChannels: SENTINEL, decode, covert_method, extract_method
+    using ..Outbound: ARP_Beacon
 
     export init_receiver
 

@@ -83,3 +83,31 @@ function if_indextoname(index::Cuint)::String
     end
     return String(name)
 end
+
+"""
+    await_arp_beacon(source_ip::IPAddr, timeout::Int)::Union{Nothing, UInt8}
+
+Await an arp beacon from the source address, return nothing if timeout is reached, otherwise return the data
+"""
+await_arp_beacon(source_ip::String, timeout::Int)::Union{Nothing, UInt8} = await_arp_beacon(IPv4Addr(source_ip), timeout)
+
+# Sequence of bytes for an ARP packet, starting from ethertype ending at at the opcode (0x0001 for request)
+const ARP_SEQUENCE        = [0x08, 0x06, 0x00, 0x01, 0x08, 0x00, 0x06, 0x04, 0x00, 0x01]
+const ARP_SEQUENCE_SLICE  = 13:22
+const ARP_SRC_SLICE       = 29:32
+const ARP_DEST_SLICE      = 39:42
+
+function await_arp_beacon(ip::IPAddr, timeout::Int64=5)
+    socket = get_socket(Int32(17), Int32(3), Int32(0x0300))
+    start = time_ns()
+    while (time_ns() - start) < timeout * 1e9
+        raw = read(socket)
+        if length(raw) >= 42
+            if raw[ARP_SEQUENCE_SLICE] == ARP_SEQUENCE
+                if raw[ARP_SRC_SLICE] == _to_bytes(ip.host)
+                    return raw[ARP_DEST_SLICE][4]
+                end
+            end
+        end
+    end
+end
