@@ -102,8 +102,9 @@ function await_arp_beacon(ip::IPAddr, timeout::Int64=5)
     start = time_ns()
     while (time_ns() - start) < timeout * 1e9
         raw = read(socket)
-        if length(raw) >= 42
+        if length(raw) >= 42 # Mininum size of an ARP packet
             if raw[ARP_SEQUENCE_SLICE] == ARP_SEQUENCE
+                println("ARP packet from $(IPv4Addr(raw[ARP_SRC_SLICE])) to $(IPv4Addr(raw[ARP_DEST_SLICE]))\n")
                 if raw[ARP_SRC_SLICE] == _to_bytes(ip.host)
                     return raw[ARP_DEST_SLICE][4]
                 end

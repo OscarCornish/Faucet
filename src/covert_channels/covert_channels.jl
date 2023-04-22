@@ -13,6 +13,11 @@ struct covert_method{Symbol}
     covert_method(name::String, layer::Layer_type, type::String, covertness::Int64, payload_size::Int64)::covert_method{Symbol} = new{Symbol(name)}(name, layer, type, Int8(covertness), payload_size)
 end
 
+function couldContainMethod(packet::Packet, m::covert_method)::Any
+    # Verify the packet could be a part of the covert channel
+    return typeof(get_header(packet, m.layer)) == m.type
+end
+
 #=
     TCP_ACK_Bounce abuses the TCP handshake,
     by spoofing the source to the destination and sending a request to a server,

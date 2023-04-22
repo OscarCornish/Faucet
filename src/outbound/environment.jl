@@ -41,22 +41,17 @@ function get_ip_addr(dest_ip::String)::Tuple{String, Union{IPAddr, Nothing}, IPA
 end
 get_ip_addr(dest_ip::IPAddr)::Tuple{String, Union{IPAddr, Nothing}, IPAddr} = get_ip_addr(string(dest_ip))
 
+const arping_regex = r"^Unicast reply from (?:\d{1,3}\.){3}\d{1,3} \[(?<mac>(?:[A-F\d]{2}:){5}[A-F\d]{2})\]"m
+
 function first_hop_mac(target::String, iface::String)::NTuple{6, UInt8}
-    searched = false
-    while true
-        try
-            return mac_from_ip(target, :remote)
-        catch e
-            @warn "got error" e
-            if !searched
-                searched = true
-                readchomp(`arping -I $iface -c 1 $target`)
-                sleep(2) # Give it fair time to reply
-            else
-                error("Address unreachable")
-                break 
-            end
+    try
+        return mac_from_ip(target, :remote)
+    catch e
+        x = match(arping_regex, readchomp(`arping -c 1 $target`))
+        if !isnothing(x)
+            return mac(x[:mac])
         end
+        @warn "Unable to find MAC address of $target using arping"
     end
     return nothing
 end

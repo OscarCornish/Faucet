@@ -27,7 +27,7 @@ _to_bytes(x::UInt64)::SVector{8, UInt8} = unsafe_load(Ptr{SVector{8, UInt8}}(Bas
 to_net(in::Unsigned)::Vector{UInt8} = _to_bytes(hton(in))
 to_net(in::IPAddr)::Vector{UInt8} = _to_bytes(hton(in.host))
 to_net(in::Vector{UInt8})::Vector{UInt8} = reverse(in)
-
+to_net(in::SVector{4, UInt8})::Vector{UInt8} = reverse(in)
 
 string(ip::IPv4Addr)::String = join(Int64.(reverse(to_bytes(ip.host))), ".")
 
@@ -77,7 +77,7 @@ const ip_from_dev_regex = r"inet (?<ip>(?:\d{1,3}\.){3}\d{1,3})\/(?<cidr>\d{1,2}
 const mac_from_dev_regex = r"link\/(?<type>[a-z]+) (?<mac>[a-f\d:]{17})"
 
 function ip_a_search(search_key::Symbol, search_val::Any, output_key::Union{Symbol, Nothing})::Any
-    for match ∈ eachmatch(ip_a_regex, readchomp(`ip a`))
+    for match ∈ eachmatch(ip_address_regex, readchomp(`ip a`))
         #@info "match[search_key] ($(match[search_key])) == search_val ($(search_val))"
         if match[search_key] == search_val
             if output_key === nothing
@@ -98,11 +98,11 @@ end
 
 function get_mac_from_dev(dev::String)::NTuple
     output = readchomp(`ip a show dev $dev`)
-    return mac(match(ip_a_regex, output)[:mac])
+    return mac(match(ip_address_regex, output)[:mac])
 end
 
 function get_dev_from_mac(mac::NTuple{6, UInt8})::String
-    for match ∈ eachmatch(ip_a_regex, readchomp(`ip a`))
+    for match ∈ eachmatch(ip_address_regex, readchomp(`ip a`))
         if mac == mac(match[:mac])
             return match[:dev_name]
         end

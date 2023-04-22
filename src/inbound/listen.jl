@@ -64,26 +64,24 @@ function process_meta(data::String)::Tuple{Symbol, Any}
 end
     
 function process_packet(current_method::covert_method, packet::Packet)::Tuple{Symbol, Any}
-    # decode packet
-    try
-        _ = decode(current_method, packet)
-    catch e
-        @debug "Failed to decode packet" error=e
-        return (:fail, nothing)
+    if couldContainMethod(packet, current_method)
+        @debug "Packet could contain method" method=current_method
+        data = bitstring(decode(current_method, packet))
+        # check if data or meta
+        if data[1] == '0'
+            return (:data, data[2:end])
+        else
+            return process_meta(data)
+        end
     end
-    data = bitstring(decode(current_method, packet))
-    # check if data or meta
-    if data[1] == '0'
-        return (:data, data[2:end])
-    else
-        return process_meta(data)
-    end
+    return (:pass, nothing)
 end
 
 # Once sentinel starts, initiate proper listening
 
 function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{UInt8}
     # Listen for sentinel
+    local_ip = get_local_ip()
     previous = ""
     data = ""
     chunk = ""
@@ -92,7 +90,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
     @debug "Listening for sentinel" current_method
     while true
         type, kwargs = process_packet(current_method, take!(queue))
-        @info "Recieved packet" type=type kwargs=kwargs
+        @debug "Recieved packet" type=type kwargs=kwargs
         if type == :sentinel
             if sentinel_recieved # If we have already recieved a sentinel, we have finished the data
                 break
@@ -105,7 +103,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
         elseif sentinel_recieved && type == :method_change
             (new_method_index, integrity_key) = kwargs
             # Beacon out  integrity of chunk
-            ARPBeacon(integrity_check(chunk, integrity_key))
+            ARPBeacon(integrity_check(chunk, integrity_key), local_ip)
             current_method = methods[new_method_index]
             previous = data
             data *= chunk

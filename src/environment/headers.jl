@@ -50,7 +50,7 @@ end
 
 # Protocol header definitions, taken from relevant header files
 
-struct ARP_header
+struct ARP_header <: Header
     hardware_type::UInt16
     protocol_type::UInt16
     hardware_length::UInt8
@@ -64,6 +64,9 @@ struct ARP_header
         return unsafe_load(Ptr{ARP_header}(p))
     end
 end
+
+getoffset(::ARP_header)::Int64 = sizeof(ARP_header)
+getprotocol(::ARP_header)::UInt8 = 0x0
 
 struct Ethernet_header <: Header
     destination::NTuple{6, UInt8}

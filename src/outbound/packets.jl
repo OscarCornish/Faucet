@@ -90,10 +90,10 @@ function craft_arp_header(
     SHA = isnothing(SHA) ? env[:src_mac] : SHA
     append!(header, SHA)
     SPS = isnothing(SPS) ? env[:src_ip] : SPS
-    append!(header, SPS)
+    append!(header, to_net(SPS))
     append!(header, THA)
     TPS = isnothing(TPS) ? env[:dest_ip] : TPS
-    append!(header, TPS)
+    append!(header, to_net(TPS))
     return header
 end
 
@@ -137,10 +137,10 @@ function craft_ip_header(
     append!(ip_header, to_net(UInt8(protocol)))
     _checksum = isnothing(header_checksum) ? 0x0000 : header_checksum
     append!(ip_header, to_net(_checksum))
-    source_ip = isnothing(source_ip) ? env[:src_ip] : source_ip
-    append!(ip_header, to_net(source_ip))
-    dest_ip = isnothing(dest_ip) ? env[:dest_ip] : dest_ip
-    append!(ip_header, to_net(dest_ip))
+    source_ip = isnothing(source_ip) ? env[:src_ip].host : source_ip
+    append!(ip_header, to_net(to_bytes(source_ip)))
+    dest_ip = isnothing(dest_ip) ? env[:dest_ip].host : dest_ip
+    append!(ip_header, to_net(to_bytes(env[:dest_ip].host)))
     return ip_header
 end
 
@@ -266,11 +266,11 @@ end
 
 Send out a beacon with the given payload. The payload is a tuple of 6 bytes.
 """
-function ARP_Beacon(payload::UInt8, send_socket::IOStream)::Nothing
-    src_mac = mac_from_ip(target.ip, :local) # This function is used by the receiver, so the src addr is the target addr
-    src_ip = to_net(target.ip)
+function ARP_Beacon(payload::UInt8, source_ip::IPAddr, send_socket::IOStream=get_socket(Int32(17), Int32(3), Int32(0xff00)))::Nothing
+    src_mac = mac_from_ip(source_ip, :local) # This function is used by the receiver, so the src addr is the target addr
+    src_ip = to_net(source_ip)
     dst_ip = [src_ip...; payload]
-    iface = get_dev_from_ip(target.ip)
+    iface = get_dev_from_ip(source_ip)
     @info "Sending ARP beacon" src_mac=src_mac src_ip=src_ip dst_ip=dst_ip payload
 
     packet = craft_packet(
@@ -291,7 +291,7 @@ function ARP_Beacon(payload::UInt8, send_socket::IOStream)::Nothing
     sendto(send_socket, packet, iface)
     return nothing
 end
-ARP_Beacon(payload::NTuple{6, UInt8}) = ARP_Beacon(payload, get_socket(Int32(17), Int32(3), Int32(0xff00)))
+ARP_Beacon(payload::NTuple{6, UInt8}, source_ip::String) = ARP_Beacon(payload, IPv4Addr(source_ip))
 
 
 function send_packet(packet::Vector{UInt8}, net_env::Dict{Symbol, Any})::Nothing
@@ -300,18 +300,18 @@ function send_packet(packet::Vector{UInt8}, net_env::Dict{Symbol, Any})::Nothing
     return nothing
 end
 
-function send_sentinel_packet(m::covert_method, net_env::Dict{Symbol, Any}, mkwargs::Dict{Symbol, Any})::Nothing
-    send_packet(craft_packet(;encode(m, craft_sentinel_payload(m.payload_size); mkwargs)...), net_env)
+function send_sentinel_packet(m::covert_method, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
+    send_packet(craft_packet(;encode(m, craft_sentinel_payload(m.payload_size); template)...), net_env)
 end
 
-function send_method_change_packet(m::covert_method, method_index::Int, net_env::Dict{Symbol, Any}, mkwargs::Dict{Symbol, Any})::UInt8
+function send_method_change_packet(m::covert_method, method_index::Int, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::UInt8
     (payload, integrity_key) = craft_change_method_payload(m, method_index)
-    send_packet(craft_packet(;encode(m, payload; mkwargs)...), net_env)
+    send_packet(craft_packet(;encode(m, payload; template)...), net_env)
     return integrity_key
 end
 
-function send_discard_chunk_packet(m::covert_method, net_env::Dict{Symbol, Any}, mkwargs::Dict{Symbol, Any})::Nothing
-    send_packet(craft_packet(;encode(m, craft_discard_chunk_payload(m.payload_size); mkwargs)...), net_env)
+function send_discard_chunk_packet(m::covert_method, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
+    send_packet(craft_packet(;encode(m, craft_discard_chunk_payload(m.payload_size); template)...), net_env)
 end
 
 # function send_meta_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::Union{String, Unsigned, Int64}, template::Dict{Symbol, Any})::Nothing
