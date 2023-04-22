@@ -45,10 +45,10 @@ end
 
 function craft_ethernet_header(t::Network_Type, env::Dict{Symbol, Any}; source_mac::Union{NTuple{6, UInt8}, Nothing} = nothing, dest_mac::Union{NTuple{6, UInt8}, Nothing} = nothing)::Vector{UInt8}
     header = Vector{UInt8}()
-    source_mac = isnothing(source_mac) ? env[:src_mac] : source_mac
-    append!(header, source_mac)
     dest_mac = isnothing(dest_mac) ? env[:dest_first_hop_mac] : dest_mac
     append!(header, dest_mac)
+    source_mac = isnothing(source_mac) ? env[:src_mac] : source_mac
+    append!(header, source_mac)
     append!(header, to_net(UInt16(t)))
     return header
 end
