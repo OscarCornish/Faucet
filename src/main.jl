@@ -55,7 +55,7 @@ module Inbound
 
     using .Main: MINIMUM_CHANNEL_SIZE, target
     using ..Environment: init_queue, local_bound_traffic, Packet, get_local_ip
-    using ..CovertChannels: SENTINEL, couldContainMethod, decode, covert_method, extract_method
+    using ..CovertChannels: SENTINEL, DISCARD_CHUNK, couldContainMethod, decode, covert_method, extract_method
     using ..Outbound: ARP_Beacon
 
     export init_receiver

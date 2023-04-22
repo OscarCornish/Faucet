@@ -368,14 +368,16 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         # Send payload packet
         if pointer+method.payload_size-1 > lastindex(bits)
             payload = rpad("0" * bits[pointer:lastindex(bits)], method.payload_size, '0')
+            @debug "Packet covert payload (Without MP)(FINAL)" payload=bits[pointer:lastindex(bits)] chunk_length=pointer-chunk_pointer
         else
             payload = "0" * bits[pointer:pointer+method.payload_size-2]
+            @debug "Packet covert payload (Without MP)" payload=bits[pointer:pointer+method.payload_size-2] chunk_length=pointer-chunk_pointer
         end
         pointer += method.payload_size-1
         send_packet(method, net_env, payload, method_kwargs)
-        @debug "Sent payload packet" method=method.name payload=payload
         sleep(time_interval)
     end
+    send_sentinel_packet(method, net_env, method_kwargs)
     send_sentinel_packet(method, net_env, method_kwargs)
     @info "Endded communication via SENTINEL" via=method.name
 end

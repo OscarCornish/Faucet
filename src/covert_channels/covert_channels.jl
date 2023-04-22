@@ -15,7 +15,7 @@ end
 
 function couldContainMethod(packet::Packet, m::covert_method)::Any
     # Verify the packet could be a part of the covert channel
-    return typeof(get_header(packet, m.layer)) == m.type
+    return split(string(typeof(get_header(packet, m.layer))), ".")[end] == m.type
 end
 
 #=
@@ -66,7 +66,6 @@ end
 
 # Encode function for TCP_ACK_Bounce
 function encode(::covert_method{:TCP_ACK_Bounce}, payload::UInt32; template::Dict{Symbol, Any})::Dict{Symbol, Any} 
-    @debug "Encoding packet {TCP_ACK_Bounce}" payload
     template[:TransportKwargs][:seq] = payload - 0x1
     return template
 end
@@ -107,7 +106,6 @@ end
 
 # Encode function for IPv4_Identification
 function encode(::covert_method{:IPv4_Identification}, payload::UInt16; template::Dict{Symbol, Any})::Dict{Symbol, Any}
-    @debug "Encoding packet {IPv4_Identification}" payload
     template[:NetworkKwargs][:identification] = payload
     return template
 end

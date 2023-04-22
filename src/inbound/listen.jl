@@ -56,7 +56,7 @@ function process_meta(data::String)::Tuple{Symbol, Any}
     meta = data[1:MINIMUM_CHANNEL_SIZE]
     if meta == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
         return (:sentinel, nothing)
-    elseif meta == bitstring(INTEGRITY_FAIL)[end-MINIMUM_CHANNEL_SIZE+1:end]
+    elseif meta == bitstring(DISCARD_CHUNK)[end-MINIMUM_CHANNEL_SIZE+1:end]
         return (:integrity_fail, nothing)
     else # Return 
         return (:method_change, extract_method(data))
@@ -65,7 +65,6 @@ end
     
 function process_packet(current_method::covert_method, packet::Packet)::Tuple{Symbol, Any}
     if couldContainMethod(packet, current_method)
-        @debug "Packet could contain method" method=current_method
         data = bitstring(decode(current_method, packet))
         # check if data or meta
         if data[1] == '0'
@@ -90,18 +89,18 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
     @debug "Listening for sentinel" current_method
     while true
         type, kwargs = process_packet(current_method, take!(queue))
-        @debug "Recieved packet" type=type kwargs=kwargs
         if type == :sentinel
             if sentinel_recieved # If we have already recieved a sentinel, we have finished the data
                 break
             else
-                #@info "Sentined recieved, beginning data collection"
+                @info "Sentined recieved, beginning data collection"
                 sentinel_recieved = true
             end
             sentinel_recieved = true
 
         elseif sentinel_recieved && type == :method_change
             (new_method_index, integrity_key) = kwargs
+            @info "Preparing for method change" new_method_index
             # Beacon out  integrity of chunk
             ARPBeacon(integrity_check(chunk, integrity_key), local_ip)
             current_method = methods[new_method_index]
@@ -110,14 +109,17 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
             chunk = ""
 
         elseif sentinel_recieved && type == :integrity_fail
+            @warn "Integrity check failed of last chunk, reverting..."
             chunk = ""
             data = previous # Revert 'commit' of chunk
         
         elseif sentinel_recieved && type == :data
+            @debug "Data received, adding to chunk" chunk_length=length(chunk) data=kwargs
             chunk *= kwargs
 
         end
     end
+    data *= chunk
     @info "Data collection complete, decrypting..."
     return dec(data)
 end
