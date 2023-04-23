@@ -64,6 +64,7 @@ function process_meta(data::String)::Tuple{Symbol, Any}
 end
     
 function process_packet(current_method::covert_method, packet::Packet)::Tuple{Symbol, Any}
+    @info "Processing packet" packet=packet
     if couldContainMethod(packet, current_method)
         data = bitstring(decode(current_method, packet))
         # check if data or meta
@@ -86,7 +87,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
     chunk = ""
     sentinel_recieved = false
     current_method = methods[1]
-    @debug "Listening for sentinel" current_method
+    @debug "Listening for sentinel" current_method.name
     while true
         type, kwargs = process_packet(current_method, take!(queue))
         if type == :sentinel

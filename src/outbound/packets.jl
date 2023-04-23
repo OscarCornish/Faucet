@@ -140,7 +140,7 @@ function craft_ip_header(
     source_ip = isnothing(source_ip) ? env[:src_ip].host : source_ip
     append!(ip_header, to_net(to_bytes(source_ip)))
     dest_ip = isnothing(dest_ip) ? env[:dest_ip].host : dest_ip
-    append!(ip_header, to_net(to_bytes(env[:dest_ip].host)))
+    append!(ip_header, to_net(to_bytes(dest_ip)))
     return ip_header
 end
 
@@ -337,6 +337,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     # Send meta sentinel to target using methods[1]
     method = methods[current_method_index]
     method_kwargs = init(method, net_env)
+    @info "Sending sentinel packet" method=method.name
     send_sentinel_packet(method, net_env, method_kwargs)
 
     # Sleep so that when we determine_method we actually have a good understanding of the environment

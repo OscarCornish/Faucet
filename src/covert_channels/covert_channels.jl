@@ -45,7 +45,7 @@ tcp_ack_bounce::covert_method{:TCP_ACK_Bounce} = covert_method(
 function init(::covert_method{:TCP_ACK_Bounce}, net_env::Dict{Symbol, Any})::Dict{Symbol, Any}
     dest_mac, dest_ip, dport = get_tcp_server(net_env[:queue])
     return Dict{Symbol, Any}(
-        :payload => Vector{UInt8}("Covert packet!"), # Obviously not a real payload
+        :payload => Vector{UInt8}(),# ("Covert packet!"), # Obviously not a real payload
         :env => net_env,
         :network_type => IPv4::Network_Type,
         :transport_type => TCP::Transport_Type,
@@ -67,12 +67,13 @@ end
 # Encode function for TCP_ACK_Bounce
 function encode(::covert_method{:TCP_ACK_Bounce}, payload::UInt32; template::Dict{Symbol, Any})::Dict{Symbol, Any} 
     template[:TransportKwargs][:seq] = payload - 0x1
+    @warn "Encoded template field" template[:TransportKwargs][:seq]
     return template
 end
 encode(m::covert_method{:TCP_ACK_Bounce}, payload::String; template::Dict{Symbol, Any})::Dict{Symbol, Any} = encode(m, parse(UInt32, payload, base=2); template=template)
 
 # Decode function for TCP_ACK_Bounce
-decode(::covert_method{:TCP_ACK_Bounce}, pkt::Packet)::UInt16 = pkt.payload.payload.payload.header.ack_num
+decode(::covert_method{:TCP_ACK_Bounce}, pkt::Packet)::UInt32 = pkt.payload.payload.payload.header.ack_num
 
 #=
     IPv4_identification utilises the 'random' identification header,
@@ -117,7 +118,7 @@ decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt16 = pkt.payload
 
 covert_methods = Vector{covert_method}([
     tcp_ack_bounce,
-    ipv4_identifaction
+    ipv4_identifaction,
 ])
 
 """
@@ -150,6 +151,8 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
         return 1, 100
         #error("Empty queue")
     end
+
+    return 1, 1
     
     layer_stats = [get_layer_stats(q, Layer_type(i)) for i ∈ 2:4]
 
