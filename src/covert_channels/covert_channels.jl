@@ -116,8 +116,8 @@ decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt16 = pkt.payload
 
 
 covert_methods = Vector{covert_method}([
-    ipv4_identifaction,
-    tcp_ack_bounce
+    tcp_ack_bounce,
+    ipv4_identifaction
 ])
 
 """
@@ -147,12 +147,10 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
 
     if isempty(q)
         @error "No packets in queue, cannot determine method" q
+        return 1, 100
         #error("Empty queue")
     end
     
-    #@warn "Hardcoded response to determine_method"
-    return 1, 1
-
     layer_stats = [get_layer_stats(q, Layer_type(i)) for i ∈ 2:4]
 
     scores = Vector{Pair{covert_method, Int64}}()
@@ -178,6 +176,7 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
     highest = first(sort(scores, by=x->x[2], rev=true))[1]
 
     # Pretty sure this should be the index of the highest score method, not the method itself
-    return highest[1], target_interval
+    @warn "USING HARDCODED RESPONSE (1, 1)" method=highest[1], interval=target_interval
+    return 1, 1
 end
 
