@@ -14,7 +14,6 @@ function dec(data::String)::Vector{UInt8}
             end
         end
     end
-
     # Convert to bytes
     bytes = Vector{UInt8}()
     if length(data) % 8 != 0
@@ -54,7 +53,6 @@ end
 
 function process_meta(data::String)::Tuple{Symbol, Any}
     meta = data[1:MINIMUM_CHANNEL_SIZE]
-    @debug "Processing meta" meta=meta
     if meta == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
         return (:sentinel, nothing)
     elseif meta == bitstring(DISCARD_CHUNK)[end-MINIMUM_CHANNEL_SIZE+1:end]
@@ -90,15 +88,15 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
     @debug "Listening for sentinel" current_method.name
     while true
         type, kwargs = process_packet(current_method, take!(queue))
+        @warn "Recieved packet" type=type kwargs=kwargs
         if type == :sentinel
             if sentinel_recieved # If we have already recieved a sentinel, we have finished the data
                 break
             else
-                @info "Sentined recieved, beginning data collection"
+                #@info "Sentined recieved, beginning data collection"
                 sentinel_recieved = true
             end
             sentinel_recieved = true
-
         elseif sentinel_recieved && type == :method_change
             (new_method_index, integrity_key) = kwargs
             @info "Preparing for method change" new_method_index
@@ -117,7 +115,6 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
         elseif sentinel_recieved && type == :data
             @debug "Data received, adding to chunk" chunk_length=length(chunk) total_length=length(data) data=kwargs
             chunk *= kwargs
-
         end
     end
     data *= chunk

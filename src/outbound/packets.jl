@@ -345,7 +345,6 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     packet_count = 0
     check_timeout = 5
 
-
     # Sleep so that when we determine_method we actually have a good understanding of the environment
     sleep(time_interval)
     while pointer <= lastindex(bits)

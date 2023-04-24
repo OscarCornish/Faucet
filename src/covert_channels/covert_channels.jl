@@ -151,7 +151,8 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
         return 1, 100
         #error("Empty queue")
     end
-
+    
+    #@warn "Hardcoded response to determine_method"
     return 1, 1
     
     layer_stats = [get_layer_stats(q, Layer_type(i)) for i ∈ 2:4]
