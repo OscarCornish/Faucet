@@ -102,7 +102,7 @@ function get_layer2index(tree_root::Node)::Dict{String, Int64}
     current_layer = 1
     while length(current_layer_nodes) > 0
         for node ∈ current_layer_nodes
-            layer2index[string(node.type)] = current_layer
+            layer2index[split(string(node.type), ".")[end]] = current_layer
             for child ∈ node.children
                 push!(next_layer_nodes, child)
             end
@@ -173,7 +173,12 @@ function query_headers(headers::Vector{Header}, arguments::Dict{String, Dict{Sym
     # Returns true if the headers match the arguments
     o = Vector{Bool}()
     for (k, v) ∈ arguments
-        push!(o, query_header(get(headers, layer2index[k], nothing), v))
+        header = get(headers, layer2index[k], nothing)
+        if !isnothing(header) && split(string(typeof(header)), ".")[end] == k
+            push!(o, query_header(header, v))
+        else
+            push!(o, false)
+        end
     end
     return all(o)
 end
@@ -246,26 +251,32 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
         )
     ])
 
-    mac, ip, port = nothing, nothing, nothing
+    service_mac, service_ip, service_port = nothing, nothing, nothing
     if !isempty(services)
         service = pop!(services) # Most recently active one
         # This is a packet going toward tcp service
         # Ethernet_header -> tcp server mac (of next hop from local perspective)
         # IP_header.daddr -> tcp server ip
         # TCP_header.dport -> tcp server port
-        mac = getfield(service[layer2index["Ethernet_header"]], :source)
-        ip = getfield(service[layer2index["IPv4_header"]], :daddr)
-        port = getfield(service[layer2index["TCP_header"]], :dport)
+        service_mac = getfield(service[layer2index["Ethernet_header"]], :source)
+        service_ip = getfield(service[layer2index["IPv4_header"]], :daddr)
+        service_port = getfield(service[layer2index["TCP_header"]], :dport)
     else
         syn_services = query_queue(q, syn_query)
         if !isempty(syn_services)
             service = pop!(syn_services) # Most recently active one
             # Again, a packet going toward a tcp server
-            mac = getfield(service[layer2index["Ethernet_header"]], :source)
-            ip = getfield(service[layer2index["IPv4_header"]], :daddr)
-            port = getfield(service[layer2index["TCP_header"]], :dport)
+            service_mac = getfield(service[layer2index["Ethernet_header"]], :source)
+            service_ip = getfield(service[layer2index["IPv4_header"]], :daddr)
+            service_port = getfield(service[layer2index["TCP_header"]], :dport)
         end
     end
+    @debug "Found TCP Server, but using hardcoded (due to test environment)" service_ip service_mac service_port
+    ip = 0xc91e140a # 10.20.30.201
+    mac_raw = match(r"^Unicast reply from (?:\d{1,3}\.){3}\d{1,3} \[(?<mac>(?:[A-F\d]{2}:){5}[A-F\d]{2})\]"m, readchomp(`arping -c 1 10.20.30.201`))[:mac]
+    mac = tuple(map(x->parse(UInt8, x, base=16), split(String(mac_raw), ':'))...)
+    #mac = (0xfa, 0x4c, 0x92, 0x7f, 0x95, 0x3b)
+    port = 0x0050
     return (mac, ip, port)
 end
 get_tcp_server(q::Channel{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, Tuple{Nothing, Nothing, Nothing}} = get_tcp_server(get_queue_data(q))

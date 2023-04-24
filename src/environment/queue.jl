@@ -170,7 +170,6 @@ end
 
 function get_local_ip(device::String)::String
     match = get_ip_from_dev(device)
-    #match = ip_a_search(:dev_name, device, :addr) <- doesn't work because regex is shit
     if isnothing(match)
         error("Could not find IP address for device: ", device)
     end

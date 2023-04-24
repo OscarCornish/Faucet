@@ -9,6 +9,7 @@ const PCAP_ERRBUF_SIZE  = 256
 const ETHERTYPE_IP      = 0x0800
 const IPPROTO_TCP       = 0x06
 const IPPROTO_UDP       = 0x11
+const ETHERTYPE_ARP     = 0x0806
 
 const SOCK_RAW          = 17
 const ETH_P_ALL         = 0x0003
@@ -48,6 +49,24 @@ struct Capture_header
 end
 
 # Protocol header definitions, taken from relevant header files
+
+struct ARP_header <: Header
+    hardware_type::UInt16
+    protocol_type::UInt16
+    hardware_length::UInt8
+    protocol_length::UInt8
+    opcode::UInt16
+    sender_mac::NTuple{6, UInt8}
+    sender_ip::NTuple{4, UInt8}
+    target_mac::NTuple{6, UInt8}
+    target_ip::NTuple{4, UInt8}
+    function ARP_header(p::Ptr{UInt8})::ARP_header
+        return unsafe_load(Ptr{ARP_header}(p))
+    end
+end
+
+getoffset(::ARP_header)::Int64 = sizeof(ARP_header)
+getprotocol(::ARP_header)::UInt8 = 0x0
 
 struct Ethernet_header <: Header
     destination::NTuple{6, UInt8}
@@ -226,10 +245,16 @@ HEADER_IPv4 = Node(
     [HEADER_TCP, HEADER_UDP]
 )
 
+HEADER_ARP = Node(
+    ARP_header,
+    ETHERTYPE_ARP,
+    []
+)
+
 # Link - 2
 
 HEADER_Ethernet = Node(
     Ethernet_header,
     0x00,
-    [HEADER_IPv4]
+    [HEADER_IPv4, HEADER_ARP]
 )

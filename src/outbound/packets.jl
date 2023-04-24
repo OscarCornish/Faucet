@@ -45,10 +45,10 @@ end
 
 function craft_ethernet_header(t::Network_Type, env::Dict{Symbol, Any}; source_mac::Union{NTuple{6, UInt8}, Nothing} = nothing, dest_mac::Union{NTuple{6, UInt8}, Nothing} = nothing)::Vector{UInt8}
     header = Vector{UInt8}()
-    source_mac = isnothing(source_mac) ? env[:src_mac] : source_mac
-    append!(header, source_mac)
     dest_mac = isnothing(dest_mac) ? env[:dest_first_hop_mac] : dest_mac
     append!(header, dest_mac)
+    source_mac = isnothing(source_mac) ? env[:src_mac] : source_mac
+    append!(header, source_mac)
     append!(header, to_net(UInt16(t)))
     return header
 end
@@ -62,9 +62,39 @@ end
 function craft_network_header(t::Network_Type, transport::Transport_Type, env::Dict{Symbol, Any}, kwargs::Dict{Symbol, Any})::Vector{UInt8}
     if t == IPv4::Network_Type
         return craft_ip_header(transport, env; kwargs...)
+    elseif t == ARP::Network_Type
+        return craft_arp_header(env; kwargs...)
     else
         error("Unsupported network type: $t")
     end
+end
+
+function craft_arp_header(
+    env::Dict{Symbol, Any};
+    hardware_type::Union{Nothing, UInt16} = 0x0001,
+    protocol_type::Union{Nothing, UInt16} = 0x0800,
+    hardware_size::Union{Nothing, UInt8} = 0x06,
+    protocol_size::Union{Nothing, UInt8} = 0x04,
+    operation::Union{Nothing, UInt16} = 0x0001,
+    SHA::Union{Nothing, NTuple{6, UInt8}} = nothing,
+    SPS::Union{Nothing, NTuple{4, UInt8}} = nothing,
+    THA::Union{Nothing, NTuple{6, UInt8}} = (0, 0, 0, 0, 0, 0),
+    TPS::Union{Nothing, NTuple{4, UInt8}} = nothing
+    )::Vector{UInt8}
+    header = Vector{UInt8}()
+    append!(header, to_net(hardware_type))
+    append!(header, to_net(protocol_type))
+    append!(header, to_net(hardware_size))
+    append!(header, to_net(protocol_size))
+    append!(header, to_net(operation))
+    SHA = isnothing(SHA) ? env[:src_mac] : SHA
+    append!(header, SHA)
+    SPS = isnothing(SPS) ? env[:src_ip] : SPS
+    append!(header, SPS)
+    append!(header, THA)
+    TPS = isnothing(TPS) ? env[:dest_ip] : TPS
+    append!(header, TPS)
+    return header
 end
 
 function ip_checksum(header::Vector{UInt8})::UInt16
@@ -107,10 +137,10 @@ function craft_ip_header(
     append!(ip_header, to_net(UInt8(protocol)))
     _checksum = isnothing(header_checksum) ? 0x0000 : header_checksum
     append!(ip_header, to_net(_checksum))
-    source_ip = isnothing(source_ip) ? env[:src_ip] : source_ip
-    append!(ip_header, to_net(source_ip))
-    dest_ip = isnothing(dest_ip) ? env[:dest_ip] : dest_ip
-    append!(ip_header, to_net(dest_ip))
+    source_ip = isnothing(source_ip) ? env[:src_ip].host : source_ip
+    append!(ip_header, to_net(to_bytes(source_ip)))
+    dest_ip = isnothing(dest_ip) ? env[:dest_ip].host : dest_ip
+    append!(ip_header, to_net(to_bytes(dest_ip)))
     return ip_header
 end
 
@@ -203,12 +233,12 @@ function craft_packet(;
     packet = Vector{UInt8}()
     #@debug "Crafting packet" p=payload ek=EtherKWargs nk=NetworkKwargs tk=TransportKwargs
 
-    # Craft Ethernet header
-    ether_header = craft_datalink_header(Ethernet::Link_Type, network_type, env, EtherKWargs)
-    append!(packet, ether_header)
-    ether_length = length(packet)
+    # Craft Datalink header
+    dl_header = craft_datalink_header(Ethernet::Link_Type, network_type, env, EtherKWargs)
+    append!(packet, dl_header)
+    dl_length = length(packet)
 
-    # Get IP header
+    # Get network header
     network_header = craft_network_header(network_type, transport_type, env, NetworkKwargs)
     append!(packet, network_header)
 
@@ -216,11 +246,11 @@ function craft_packet(;
     transport_header = craft_transport_header(transport_type, env, packet, payload, TransportKwargs)
     if network_type == IPv4::Network_Type && packet[17:18] == [0x00, 0x00]
         len = to_net(UInt16(length(network_header) + length(transport_header) + length(payload)))
-        packet[ether_length+3:ether_length+4] = len
+        packet[dl_length+3:dl_length+4] = len
         # Perform checksum after setting length
     end
-    if network_type == IPv4::Network_Type && packet[ether_length+11:ether_length+12] == [0x00, 0x00]
-        packet[ether_length+11:ether_length+12] = to_net(checksum(packet[ether_length+1:ether_length+length(network_header)]))
+    if network_type == IPv4::Network_Type && packet[dl_length+11:dl_length+12] == [0x00, 0x00]
+        packet[dl_length+11:dl_length+12] = to_net(checksum(packet[dl_length+1:dl_length+length(network_header)]))
     end
     # Craft Transport header
     append!(packet, transport_header)
@@ -231,56 +261,135 @@ function craft_packet(;
     return packet
 end
 
+"""
+    ARP_Beacon(payload::NTuple{6, UInt8})
+
+Send out a beacon with the given payload. The payload is a tuple of 6 bytes.
+"""
+function ARP_Beacon(payload::UInt8, source_ip::IPAddr, send_socket::IOStream=get_socket(Int32(17), Int32(3), Int32(0xff00)))::Nothing
+    src_mac = mac_from_ip(source_ip, :local) # This function is used by the receiver, so the src addr is the target addr
+    src_ip = _to_bytes(source_ip.host)
+    dst_ip = [src_ip[1:3]...; payload]
+    iface = get_dev_from_ip(source_ip)
+    @debug "Sending ARP beacon" payload
+
+    packet = craft_packet(
+        payload = Vector{UInt8}(),
+        env = Dict{Symbol, Any}(),
+        network_type = ARP::Network_Type,
+        EtherKWargs = Dict{Symbol, Any}(
+            :source_mac => src_mac, # Get from regex...
+            :dest_mac => (0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+        ),
+        NetworkKwargs = Dict{Symbol, Any}(
+            :SHA => src_mac,
+            :THA => (0x00, 0x00, 0x00, 0x00, 0x00, 0x00),
+            :SPS => NTuple{4, UInt8}(src_ip), # Target <- Have from target...
+            :TPS => NTuple{4, UInt8}(dst_ip) # first 3 bytes of src_ip, + payload
+        )
+    )
+    # Send packet
+    sendto(send_socket, packet, iface)
+    return nothing
+end
+ARP_Beacon(payload::NTuple{6, UInt8}, source_ip::String) = ARP_Beacon(payload, IPv4Addr(source_ip))
+
+
 function send_packet(packet::Vector{UInt8}, net_env::Dict{Symbol, Any})::Nothing
     bytes = sendto(net_env[:sock]::IOStream, packet, net_env[:interface]::String)
     @assert (bytes == length(packet)) "Sent $bytes bytes, expected $(length(packet))"
     return nothing
 end
-function send_meta_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::Union{String, Unsigned, Int64}, template::Dict{Symbol, Any})::Nothing
-    return send_packet(craft_packet(;encode(m, craft_meta_payload(payload, m.payload_size); template)...), net_env)
+
+function send_sentinel_packet(m::covert_method, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
+    send_packet(craft_packet(;encode(m, craft_sentinel_payload(m.payload_size); template)...), net_env)
 end
+
+function send_method_change_packet(m::covert_method, method_index::Int, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::String
+    (payload, integrity_key) = craft_change_method_payload(method_index, m.payload_size)
+    send_packet(craft_packet(;encode(m, payload; template)...), net_env)
+    return integrity_key
+end
+
+function send_discard_chunk_packet(m::covert_method, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
+    send_packet(craft_packet(;encode(m, craft_discard_chunk_payload(m.payload_size); template)...), net_env)
+end
+
+# function send_meta_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::Union{String, Unsigned, Int64}, template::Dict{Symbol, Any})::Nothing
+#     return send_packet(craft_packet(;encode(m, craft_meta_payload(payload, m.payload_size); template)...), net_env)
+# end
+
 function send_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::String, template::Dict{Symbol, Any})::Nothing
     return send_packet(craft_packet(;encode(m, payload; template)...), net_env)
 end
 
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})
-    @warn "NOT ENCRYPTING PAYLOAD FOR TESTING PURPOSES"
+    current_method_index = 1
+    pointer = 1
+    chunk_pointer = pointer
+    time_interval = 5 # Don't want packets to send until we have determined which type is best
+    @warn "Inital time interval " time_interval
+    
+    # Encrypt payload and append length, store it as a bitstring
     payload = enc(raw_payload)
     bits = *(bitstring.(payload)...)
     bits *= lstrip(bitstring(Int64(length(bits) / 8)), '0') # Append length of payload, we will use this to determine where the payload ends later
-    pointer = 1
-    current_method_index = 1
-    time_interval = 5 # Don't want packets to send until we have determined which type is best
-    @warn "Inital time interval " time_interval
+    
     # Send meta sentinel to target using methods[1]
     method = methods[current_method_index]
     method_kwargs = init(method, net_env)
-    send_meta_packet(method, net_env, SENTINEL, method_kwargs)
-    #@info "Sent meta sentinel" via=method.name
+    @info "Sending sentinel packet" method=method.name
+    send_sentinel_packet(method, net_env, method_kwargs)
+
+    integrity_interval = 6
+    packet_count = 0
+    check_timeout = 5
+
+    # Sleep so that when we determine_method we actually have a good understanding of the environment
     sleep(time_interval)
     while pointer <= lastindex(bits)
         method_index, time_interval = determine_method(methods, net_env)
-        if method_index != current_method_index
+        if method_index != current_method_index || packet_count % integrity_interval == 0
             # Send meta packet to tell target to switch methods
-            send_meta_packet(method, net_env, method_index, method_kwargs)
+            # Make custom method for changing methods, returning the key for integrity check
+            key = send_method_change_packet(method, method_index, net_env, method_kwargs)
+            # It is likely I've messed up the pointer here...
+            integrity = integrity_check(bits[chunk_pointer:pointer-1], key)
+            
             # Switch methods
             method = methods[method_index]
             method_kwargs = init(method, net_env)
             current_method_index = method_index
-            @info "Switched method" method=method.name interval=time_interval
+            if packet_count % integrity_interval == 0
+                @info "Performing regular interval integrity check" interval=integrity_interval
+            else
+                @info "Switched method, performing integrity check" method=method.name interval=time_interval
+            end
+
+            data = await_arp_beacon(net_env[:dest_ip], check_timeout)
+            if !isnothing(data) && integrity == data # Success!
+                @info "Integrity check passed" method=method.name data
+                chunk_pointer = pointer
+            else # Failure, resend chunk
+                pointer = chunk_pointer
+                @warn "Failed integrity check" method=method.name data
+                send_discard_chunk_packet(method, net_env, method_kwargs)
+            end
         end
         # Send payload packet
         if pointer+method.payload_size-1 > lastindex(bits)
             payload = rpad("0" * bits[pointer:lastindex(bits)], method.payload_size, '0')
+            @debug "Packet covert payload (Without MP)(FINAL)" payload=bits[pointer:lastindex(bits)] chunk_length=pointer-chunk_pointer total_sent=pointer
         else
             payload = "0" * bits[pointer:pointer+method.payload_size-2]
+            @debug "Packet covert payload (Without MP)" payload=bits[pointer:pointer+method.payload_size-2] chunk_length=pointer-chunk_pointer total_sent=pointer
         end
         pointer += method.payload_size-1
         send_packet(method, net_env, payload, method_kwargs)
-        @debug "Sent payload packet" method=method.name payload=payload
+        packet_count += 1
         sleep(time_interval)
     end
-    send_meta_packet(method, net_env, SENTINEL, method_kwargs)
-    send_meta_packet(method, net_env, SENTINEL, method_kwargs)
+    send_sentinel_packet(method, net_env, method_kwargs)
+    send_sentinel_packet(method, net_env, method_kwargs)
     @info "Endded communication via SENTINEL" via=method.name
-end    
+end
