@@ -271,7 +271,7 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
             service_port = getfield(service[layer2index["TCP_header"]], :dport)
         end
     end
-    @warn "Found TCP Server, but using hardcoded" service_ip service_mac service_port
+    @debug "Found TCP Server, but using hardcoded (due to test environment)" service_ip service_mac service_port
     ip = 0xc91e140a # 10.20.30.201
     mac_raw = match(r"^Unicast reply from (?:\d{1,3}\.){3}\d{1,3} \[(?<mac>(?:[A-F\d]{2}:){5}[A-F\d]{2})\]"m, readchomp(`arping -c 1 10.20.30.201`))[:mac]
     mac = tuple(map(x->parse(UInt8, x, base=16), split(String(mac_raw), ':'))...)

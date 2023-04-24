@@ -90,10 +90,10 @@ function craft_arp_header(
     SHA = isnothing(SHA) ? env[:src_mac] : SHA
     append!(header, SHA)
     SPS = isnothing(SPS) ? env[:src_ip] : SPS
-    append!(header, to_net(SPS))
+    append!(header, SPS)
     append!(header, THA)
     TPS = isnothing(TPS) ? env[:dest_ip] : TPS
-    append!(header, to_net(TPS))
+    append!(header, TPS)
     return header
 end
 
@@ -268,23 +268,24 @@ Send out a beacon with the given payload. The payload is a tuple of 6 bytes.
 """
 function ARP_Beacon(payload::UInt8, source_ip::IPAddr, send_socket::IOStream=get_socket(Int32(17), Int32(3), Int32(0xff00)))::Nothing
     src_mac = mac_from_ip(source_ip, :local) # This function is used by the receiver, so the src addr is the target addr
-    src_ip = to_net(source_ip)
-    dst_ip = [src_ip...; payload]
+    src_ip = _to_bytes(source_ip.host)
+    dst_ip = [src_ip[1:3]...; payload]
     iface = get_dev_from_ip(source_ip)
-    @info "Sending ARP beacon" src_mac=src_mac src_ip=src_ip dst_ip=dst_ip payload
+    @debug "Sending ARP beacon" payload
 
     packet = craft_packet(
         payload = Vector{UInt8}(),
+        env = Dict{Symbol, Any}(),
         network_type = ARP::Network_Type,
         EtherKWargs = Dict{Symbol, Any}(
-            :src_mac => src_mac, # Get from regex...
-            :dst_mac => (0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+            :source_mac => src_mac, # Get from regex...
+            :dest_mac => (0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
         ),
         NetworkKwargs = Dict{Symbol, Any}(
             :SHA => src_mac,
             :THA => (0x00, 0x00, 0x00, 0x00, 0x00, 0x00),
-            :SPS => src_ip, # Target <- Have from target...
-            :TPS => dst_ip # first 3 bytes of src_ip, + payload
+            :SPS => NTuple{4, UInt8}(src_ip), # Target <- Have from target...
+            :TPS => NTuple{4, UInt8}(dst_ip) # first 3 bytes of src_ip, + payload
         )
     )
     # Send packet
@@ -304,8 +305,8 @@ function send_sentinel_packet(m::covert_method, net_env::Dict{Symbol, Any}, temp
     send_packet(craft_packet(;encode(m, craft_sentinel_payload(m.payload_size); template)...), net_env)
 end
 
-function send_method_change_packet(m::covert_method, method_index::Int, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::UInt8
-    (payload, integrity_key) = craft_change_method_payload(m, method_index)
+function send_method_change_packet(m::covert_method, method_index::Int, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::String
+    (payload, integrity_key) = craft_change_method_payload(method_index, m.payload_size)
     send_packet(craft_packet(;encode(m, payload; template)...), net_env)
     return integrity_key
 end
@@ -340,11 +341,16 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     @info "Sending sentinel packet" method=method.name
     send_sentinel_packet(method, net_env, method_kwargs)
 
+    integrity_interval = 6
+    packet_count = 0
+    check_timeout = 5
+
+
     # Sleep so that when we determine_method we actually have a good understanding of the environment
     sleep(time_interval)
     while pointer <= lastindex(bits)
         method_index, time_interval = determine_method(methods, net_env)
-        if method_index != current_method_index
+        if method_index != current_method_index || packet_count % integrity_interval == 0
             # Send meta packet to tell target to switch methods
             # Make custom method for changing methods, returning the key for integrity check
             key = send_method_change_packet(method, method_index, net_env, method_kwargs)
@@ -355,10 +361,15 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
             method = methods[method_index]
             method_kwargs = init(method, net_env)
             current_method_index = method_index
-            @info "Switched method" method=method.name interval=time_interval
-            
-            data = await_arp_beacon(net_env[:target_ip], 5)
+            if packet_count % integrity_interval == 0
+                @info "Performing regular interval integrity check" interval=integrity_interval
+            else
+                @info "Switched method, performing integrity check" method=method.name interval=time_interval
+            end
+
+            data = await_arp_beacon(net_env[:dest_ip], check_timeout)
             if !isnothing(data) && integrity == data # Success!
+                @info "Integrity check passed" method=method.name data
                 chunk_pointer = pointer
             else # Failure, resend chunk
                 pointer = chunk_pointer
@@ -369,13 +380,14 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         # Send payload packet
         if pointer+method.payload_size-1 > lastindex(bits)
             payload = rpad("0" * bits[pointer:lastindex(bits)], method.payload_size, '0')
-            @debug "Packet covert payload (Without MP)(FINAL)" payload=bits[pointer:lastindex(bits)] chunk_length=pointer-chunk_pointer
+            @debug "Packet covert payload (Without MP)(FINAL)" payload=bits[pointer:lastindex(bits)] chunk_length=pointer-chunk_pointer total_sent=pointer
         else
             payload = "0" * bits[pointer:pointer+method.payload_size-2]
-            @debug "Packet covert payload (Without MP)" payload=bits[pointer:pointer+method.payload_size-2] chunk_length=pointer-chunk_pointer
+            @debug "Packet covert payload (Without MP)" payload=bits[pointer:pointer+method.payload_size-2] chunk_length=pointer-chunk_pointer total_sent=pointer
         end
         pointer += method.payload_size-1
         send_packet(method, net_env, payload, method_kwargs)
+        packet_count += 1
         sleep(time_interval)
     end
     send_sentinel_packet(method, net_env, method_kwargs)

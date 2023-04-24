@@ -14,7 +14,7 @@ include("target.jl")
 
 module Environment
 
-    using .Main: Layer_type, get_ip_from_dev, ip_a_search, IPAddr
+    using .Main: Layer_type, get_ip_from_dev, ip_a_search, IPv4Addr, IPAddr, _to_bytes
     export init_queue, get_tcp_server, Packet
 
     include("environment/headers.jl")
@@ -39,9 +39,9 @@ end
 
 module Outbound
 
-    using .Main: Target, target, IPAddr, IPv4Addr, Network_Type, Transport_Type, Link_Type, Ethernet, IPv4, TCP, UDP, to_bytes, ip_address_regex, ip_route_regex, ip_neigh_regex, mac, to_net, _to_bytes
+    using .Main: Target, target, IPAddr, IPv4Addr, Network_Type, Transport_Type, Link_Type, Ethernet, IPv4, TCP, UDP, ARP, to_bytes, ip_address_regex, ip_route_regex, ip_neigh_regex, mac, to_net, _to_bytes, integrity_check
     using ..CovertChannels: craft_change_method_payload, craft_discard_chunk_payload, craft_sentinel_payload
-    using ..Environment: Packet, get_socket, sendto
+    using ..Environment: Packet, get_socket, sendto, await_arp_beacon
 
     export send_covert_payload, init_environment
 
@@ -53,7 +53,7 @@ end
 
 module Inbound
 
-    using .Main: MINIMUM_CHANNEL_SIZE, target
+    using .Main: MINIMUM_CHANNEL_SIZE, target, integrity_check, IPv4Addr
     using ..Environment: init_queue, local_bound_traffic, Packet, get_local_ip
     using ..CovertChannels: SENTINEL, DISCARD_CHUNK, couldContainMethod, decode, covert_method, extract_method
     using ..Outbound: ARP_Beacon

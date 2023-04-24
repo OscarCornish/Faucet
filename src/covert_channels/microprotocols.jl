@@ -39,6 +39,7 @@ const DISCARD_CHUNK = SENTINEL - 1
 
 =# 
 
+resize_payload(payload::Integer, capacity::Int)::String = resize_payload(UInt64(payload), capacity)
 function resize_payload(payload::Unsigned, capacity::Int)::String
     content = bitstring(payload)[end-MINIMUM_CHANNEL_SIZE+1:end] # Get the last 5 bits
     padding = join([rand(("1","0")) for i ∈ 1:(capacity - length(content))])

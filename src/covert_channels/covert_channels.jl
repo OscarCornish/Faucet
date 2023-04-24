@@ -68,7 +68,6 @@ end
 # Encode function for TCP_ACK_Bounce
 function encode(::covert_method{:TCP_ACK_Bounce}, payload::UInt32; template::Dict{Symbol, Any})::Dict{Symbol, Any} 
     template[:TransportKwargs][:seq] = payload - 0x1
-    @warn "Encoded template field" template[:TransportKwargs][:seq]
     return template
 end
 encode(m::covert_method{:TCP_ACK_Bounce}, payload::String; template::Dict{Symbol, Any})::Dict{Symbol, Any} = encode(m, parse(UInt32, payload, base=2); template=template)

@@ -11,8 +11,10 @@ queue = init_receiver(:local)
 
 data = listen(queue, covert_methods)
 
-open("plaintext.txt", "w") do io
-    write(io, data)
-    println(String(data))
-end
- 
+# open("plaintext.txt", "w") do io
+#     write(io, data)
+# end
+
+@info "Data recieved" covert_payload=String(strip_padding(data))
+
+exit(0)

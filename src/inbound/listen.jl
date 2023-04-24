@@ -54,6 +54,7 @@ end
 
 function process_meta(data::String)::Tuple{Symbol, Any}
     meta = data[1:MINIMUM_CHANNEL_SIZE]
+    @debug "Processing meta" meta=meta
     if meta == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
         return (:sentinel, nothing)
     elseif meta == bitstring(DISCARD_CHUNK)[end-MINIMUM_CHANNEL_SIZE+1:end]
@@ -102,7 +103,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
             (new_method_index, integrity_key) = kwargs
             @info "Preparing for method change" new_method_index
             # Beacon out  integrity of chunk
-            ARPBeacon(integrity_check(chunk, integrity_key), local_ip)
+            ARP_Beacon(integrity_check(chunk, integrity_key), IPv4Addr(local_ip))
             current_method = methods[new_method_index]
             previous = data
             data *= chunk
@@ -114,7 +115,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
             data = previous # Revert 'commit' of chunk
         
         elseif sentinel_recieved && type == :data
-            @debug "Data received, adding to chunk" chunk_length=length(chunk) data=kwargs
+            @debug "Data received, adding to chunk" chunk_length=length(chunk) total_length=length(data) data=kwargs
             chunk *= kwargs
 
         end

@@ -56,10 +56,10 @@ end
     application = 5 # HTTP
 end
 
-custom_crc8_poly(poly::UInt8)::CRC.spec = CRC.spec(8, poly, 0x00, false, false, 0x00, 0xf4) # Mimic the CRC_8 spec, with a custom polynomial
+custom_crc8_poly(poly::UInt8) = CRC.spec(8, poly, poly, false, false, 0x00, 0xf4) # Mimic the CRC_8 spec, with a custom polynomial
 
 """
-    integrity_check(chunk::Vector{UInt8}, xor_key::bitstring)::NTuple{6, UInt8}
+    integrity_check(chunk::bitstring, xor_key::bitstring)::UInt8
 
 Deterministic function to calculate a single byte to verify the integrity of the data
 """
@@ -108,4 +108,13 @@ function get_dev_from_mac(mac::NTuple{6, UInt8})::String
         end
     end
     return ""
+end
+
+function strip_padding(data::Vector{UInt8})::Vector{UInt8}
+    padding = data[end]
+    if data[end-padding+1:end] == [padding for i in 1:padding]
+        return data[1:end-padding]
+    else
+        return data
+    end
 end
