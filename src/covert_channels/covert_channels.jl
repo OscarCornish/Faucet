@@ -44,14 +44,15 @@ tcp_ack_bounce::covert_method{:TCP_ACK_Bounce} = covert_method(
 # Init function for TCP_ACK_Bounce
 function init(::covert_method{:TCP_ACK_Bounce}, net_env::Dict{Symbol, Any})::Dict{Symbol, Any}
     dest_mac, dest_ip, dport = get_tcp_server(net_env[:queue])
+
     return Dict{Symbol, Any}(
         :payload => Vector{UInt8}(),# ("Covert packet!"), # Obviously not a real payload
         :env => net_env,
         :network_type => IPv4::Network_Type,
         :transport_type => TCP::Transport_Type,
         :EtherKWargs => Dict{Symbol, Any}(
-            :source_mac => net_env[:dest_first_hop_mac],
-            :dest_mac => dest_mac
+            :dest_mac => dest_mac,
+            :source_mac => net_env[:src_mac]#net_env[:dest_first_hop_mac]
         ),
         :NetworkKwargs => Dict{Symbol, Any}(
             :source_ip => net_env[:dest_ip].host,

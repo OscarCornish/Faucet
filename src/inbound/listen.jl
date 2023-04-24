@@ -64,7 +64,6 @@ function process_meta(data::String)::Tuple{Symbol, Any}
 end
     
 function process_packet(current_method::covert_method, packet::Packet)::Tuple{Symbol, Any}
-    @info "Processing packet" packet=packet
     if couldContainMethod(packet, current_method)
         data = bitstring(decode(current_method, packet))
         # check if data or meta

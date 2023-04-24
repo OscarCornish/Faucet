@@ -275,6 +275,7 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
     ip = 0xc91e140a # 10.20.30.201
     mac_raw = match(r"^Unicast reply from (?:\d{1,3}\.){3}\d{1,3} \[(?<mac>(?:[A-F\d]{2}:){5}[A-F\d]{2})\]"m, readchomp(`arping -c 1 10.20.30.201`))[:mac]
     mac = tuple(map(x->parse(UInt8, x, base=16), split(String(mac_raw), ':'))...)
+    #mac = (0xfa, 0x4c, 0x92, 0x7f, 0x95, 0x3b)
     port = 0x0050
     return (mac, ip, port)
 end
