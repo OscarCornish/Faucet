@@ -280,3 +280,23 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
     return (mac, ip, port)
 end
 get_tcp_server(q::Channel{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, Tuple{Nothing, Nothing, Nothing}} = get_tcp_server(get_queue_data(q))
+
+function get_local_hosts(q::Vector{Packet}, local_address::IPv4Addr, subnet_mask::Int=24)::Vector{UInt8} # return the host byte of the local ip
+    # Get all IPv4 headers
+    ipv4_headers = query_queue(q, [
+        Dict{String, Dict{Symbol, Any}}(
+            "IPv4_header" => Dict{Symbol, Any}()
+        )
+    ])
+    local_address_mask = UInt32(2^subnet_mask - 1)
+    local_address &= local_address_mask
+    hosts = Set{UInt8}()
+    for ipv4 ∈ ipv4_headers
+        for header ∈ [ipv4.saddr, ipv4.haddr]
+            if header & local_address_mask == local_address
+                push!(hosts, UInt8(header >>> subnet_mask))
+            end
+        end
+    end
+    return collect(hosts) 
+end
