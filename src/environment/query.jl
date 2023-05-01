@@ -281,7 +281,12 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
 end
 get_tcp_server(q::Channel{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, Tuple{Nothing, Nothing, Nothing}} = get_tcp_server(get_queue_data(q))
 
-function get_local_hosts(q::Vector{Packet}, local_address::IPv4Addr, subnet_mask::Int=24)::Vector{UInt8} # return the host byte of the local ip
+"""
+    get_local_host(queue, local_address, subnet_mask)::Vector{UInt8}
+
+    Returns the host byte of the local ip address
+"""
+function get_local_net_host(q::Vector{Packet}, local_address::IPv4Addr, subnet_mask::Int=24)::Vector{UInt8} # return the host byte of the local ip
     # Get all IPv4 headers
     ipv4_headers = query_queue(q, [
         Dict{String, Dict{Symbol, Any}}(
@@ -290,13 +295,17 @@ function get_local_hosts(q::Vector{Packet}, local_address::IPv4Addr, subnet_mask
     ])
     local_address_mask = UInt32(2^subnet_mask - 1)
     local_address &= local_address_mask
-    hosts = Set{UInt8}()
+    hosts = Dict{UInt8, Int}()
     for ipv4 ∈ ipv4_headers
         for header ∈ [ipv4.saddr, ipv4.haddr]
             if header & local_address_mask == local_address
-                push!(hosts, UInt8(header >>> subnet_mask))
+                if haskey(hosts, UInt8(header >>> subnet_mask))
+                    hosts[UInt8(header >>> subnet_mask)] += 1
+                else
+                    hosts[UInt8(header >>> subnet_mask)] = 1
+                end
             end
         end
     end
-    return collect(hosts) 
+    return find_max_key(hosts) 
 end

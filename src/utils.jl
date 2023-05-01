@@ -59,15 +59,31 @@ end
 custom_crc8_poly(poly::UInt8) = CRC.spec(8, poly, poly, false, false, 0x00, 0xf4) # Mimic the CRC_8 spec, with a custom polynomial
 
 """
-    integrity_check(chunk::bitstring, xor_key::bitstring)::UInt8
+    integrity_check(chunk::bitstring)::UInt8
 
-Deterministic function to calculate a single byte to verify the integrity of the data
+CRC8 of the chunk, padded to 8 bits
 """
-function integrity_check(chunk::String, key::String)::UInt8
-    poly = parse(UInt8, rpad(key, 8, '0')[1:8], base=2)
+function integrity_check(chunk::String)::UInt8
     padding = 8 - (length(chunk) % 8)
     chunk *= padding == 8 ? "" : "0"^padding
-    return crc(custom_crc8_poly(poly))([parse(UInt8, chunk[i:i+7], base=2) for i in 1:8:length(chunk)])
+    return crc(CRC_8)([parse(UInt8, chunk[i:i+7], base=2) for i in 1:8:length(chunk)])
+    # integrity ⊻ offset = active_host
+    # offset can thus be calculated with offset = integrity ⊻ active_host 
+
+    # Sender: (Receiving beacon)
+    #  Knows:
+    #  - active_host
+    #  - integrity
+    #  Can calculate offset
+    #  integrity ⊻ active_host = offset
+
+
+    # Recv: (Sending beacon)
+    #  Knows:
+    #   - integrity
+    #   - offset (from method change)
+    #  Can calculate active_host
+    #  integrity ⊻ offset = active_host
 end
 
 const ip_address_regex = r"^(?<index>\d+): (?<iface>[\w\d]+)(?:@[\w\d]+)?: <(?<ifType>[A-Z,_]+)> mtu (?<mtu>\d+) [\w ]+ state (?<state>[A-Z]+) group default qlen (?<qlen>\d+)[\s ]+link\/ether (?<mac>(?:[a-f\d]{2}:){5}[a-f\d]{2}) brd (?<brd>[a-f\d:]{17}) [\w\- ]+[\s ]+inet (?<ip>(?:\d{1,3}.){3}\d{1,3})\/(?<subnet>\d+)"m
@@ -117,4 +133,14 @@ function strip_padding(data::Vector{UInt8})::Vector{UInt8}
     else
         return data
     end
+end
+
+function find_max_key(dict::Dict{T, Any})::T where {T}
+    maxkey, maxvalue = next(dict, start(dict))[1]
+    for (key, value) ∈ dict
+        if value > maxvalue
+            maxkey, maxvalue = key, value
+        end
+    end
+    return maxkey
 end

@@ -305,10 +305,9 @@ function send_sentinel_packet(m::covert_method, net_env::Dict{Symbol, Any}, temp
     send_packet(craft_packet(;encode(m, craft_sentinel_payload(m.payload_size); template)...), net_env)
 end
 
-function send_method_change_packet(m::covert_method, method_index::Int, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::String
-    (payload, integrity_key) = craft_change_method_payload(method_index, m.payload_size)
+function send_method_change_packet(m::covert_method, method_index::Int, offset::UInt8, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::String
+    payload = craft_change_method_payload(method_index, offset, m.payload_size)
     send_packet(craft_packet(;encode(m, payload; template)...), net_env)
-    return integrity_key
 end
 
 function send_discard_chunk_packet(m::covert_method, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
@@ -352,9 +351,10 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         if method_index != current_method_index || packet_count % integrity_interval == 0
             # Send meta packet to tell target to switch methods
             # Make custom method for changing methods, returning the key for integrity check
-            key = send_method_change_packet(method, method_index, net_env, method_kwargs)
-            # It is likely I've messed up the pointer here...
-            integrity = integrity_check(bits[chunk_pointer:pointer-1], key)
+            integrity = integrity_check(bits[chunk_pointer:pointer-1])
+            known_host = get_local_net_host(net_env[:queue], net_env[:src_ip])
+            
+            send_method_change_packet(method, method_index, integrity ⊻ known_host, net_env, method_kwargs)
             
             # Switch methods
             method = methods[method_index]
