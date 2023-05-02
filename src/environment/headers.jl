@@ -1,3 +1,5 @@
+import Base: -
+
 #=
 
     Headers.jl
@@ -40,6 +42,10 @@ mutable struct Pcap end
 struct Timeval
     seconds::Clong
     ms::Clong
+end
+
+function -(t1::Timeval, t2::Timeval)::Float64
+    return (t1.seconds - t2.seconds) + ((t1.ms - t2.ms) / 1_000_000)
 end
 
 struct Capture_header

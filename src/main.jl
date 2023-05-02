@@ -28,7 +28,7 @@ end
 module CovertChannels
 
     using .Main: IPAddr, IPv4Addr, Network_Type, Transport_Type, Layer_type, IPv4, TCP, find_max_key
-    using ..Environment: Packet, get_tcp_server, TCP_SYN, get_queue_data, get_layer_stats, get_header
+    using ..Environment: Packet, get_tcp_server, TCP_SYN, get_queue_data, get_layer_stats, get_header, get_local_host_count
 
     export determine_method, covert_method, covert_methods, init, encode, couldContainMethod, decode
 

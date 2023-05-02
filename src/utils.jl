@@ -66,6 +66,7 @@ CRC8 of the chunk, padded to 8 bits
 function integrity_check(chunk::String)::UInt8
     padding = 8 - (length(chunk) % 8)
     chunk *= padding == 8 ? "" : "0"^padding
+    @debug "Integrity:" i=crc(CRC_8)([parse(UInt8, chunk[i:i+7], base=2) for i in 1:8:length(chunk)])
     return crc(CRC_8)([parse(UInt8, chunk[i:i+7], base=2) for i in 1:8:length(chunk)])
     # integrity ⊻ offset = active_host
     # offset can thus be calculated with offset = integrity ⊻ active_host 

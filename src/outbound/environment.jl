@@ -67,8 +67,12 @@ function get_dev_from_ip(ip::String)::String
 end
 get_dev_from_ip(ip::IPAddr)::String = get_dev_from_ip(string(ip))
 
-function init_environment(target::Target, q::Channel{Packet})::Dict{Symbol, Any}
+function init_environment(target::Target, q::Channel{Packet}, covertness::Int=5)::Dict{Symbol, Any}
+    @assert isa(target.ip, IPv4Addr)
+    @assert 1 ≤ covertness ≤ 10
+
     env = Dict{Symbol, Any}()
+    env[:desired_secrecy] = covertness
     # Get dest ip as UInt32
     env[:dest_ip] = target.ip
     # Get src ip from sending interface

@@ -320,7 +320,6 @@ end
 
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})
     blacklist = [UInt8(hton(net_env[:dest_ip].host) & 0x000000ff)]
-    @info "Blacklist" blacklist
     current_method_index = 1
     pointer = 1
     chunk_pointer = pointer
