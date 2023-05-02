@@ -88,7 +88,6 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
     @debug "Listening for sentinel" current_method.name
     while true
         type, kwargs = process_packet(current_method, take!(queue))
-        @warn "Recieved packet" type=type kwargs=kwargs
         if type == :sentinel
             if sentinel_recieved # If we have already recieved a sentinel, we have finished the data
                 break

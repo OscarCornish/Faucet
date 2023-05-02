@@ -77,6 +77,9 @@ function integrity_check(chunk::String)::UInt8
     #  Can calculate offset
     #  integrity ⊻ active_host = offset
 
+    # Then from (integrity ⊻ active_host) ⊻ integrity = active_host, we can calculate the active host
+    # -> active_host_sent == active_host_recv to verify integrity
+
 
     # Recv: (Sending beacon)
     #  Knows:
@@ -84,6 +87,8 @@ function integrity_check(chunk::String)::UInt8
     #   - offset (from method change)
     #  Can calculate active_host
     #  integrity ⊻ offset = active_host
+
+
 end
 
 const ip_address_regex = r"^(?<index>\d+): (?<iface>[\w\d]+)(?:@[\w\d]+)?: <(?<ifType>[A-Z,_]+)> mtu (?<mtu>\d+) [\w ]+ state (?<state>[A-Z]+) group default qlen (?<qlen>\d+)[\s ]+link\/ether (?<mac>(?:[a-f\d]{2}:){5}[a-f\d]{2}) brd (?<brd>[a-f\d:]{17}) [\w\- ]+[\s ]+inet (?<ip>(?:\d{1,3}.){3}\d{1,3})\/(?<subnet>\d+)"m
@@ -135,12 +140,4 @@ function strip_padding(data::Vector{UInt8})::Vector{UInt8}
     end
 end
 
-function find_max_key(dict::Dict{T, Any})::T where {T}
-    maxkey, maxvalue = next(dict, start(dict))[1]
-    for (key, value) ∈ dict
-        if value > maxvalue
-            maxkey, maxvalue = key, value
-        end
-    end
-    return maxkey
-end
+find_max_key(dict::Dict) = collect(keys(dict))[findmax(collect(values(dict)))[2]]
