@@ -160,7 +160,6 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
     # Rate at which to send covert packets : Method i rate = rates[i]
     R = zeros(Float64, length(covert_methods))
 
-
     # Eₗ : Environment length : Number of packets in queue
     Eₗ = length(q)
 
@@ -178,7 +177,6 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
             @warn "No packets with valid headers" method.type L
             continue
         end
-
         # Lᵢ : the layer that method i exists on
         Lᵢ = Lᵢ_temp[1]
 
@@ -220,6 +218,7 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
     Rᵢ = R[i]
 
     @debug "Determined covert method" covert_methods[i].name score=Sᵢ rate=Rᵢ
+    # Sort scores by second value in pair (score) and return highest
 
     return i, Rᵢ
 end
