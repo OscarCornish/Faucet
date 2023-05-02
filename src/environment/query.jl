@@ -69,7 +69,7 @@ function get_layer_stats(v::Vector{Packet}, l::Layer_type)::Dict{String, Int64}
         if ismissing(h)
             info["Missing"] += 1
         else
-            prot = string(typeof(h))
+            prot = split(string(typeof(h)), ".")[end]
             if prot ∈ keys(info)
                 info[prot] += 1
             else
@@ -281,6 +281,27 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
 end
 get_tcp_server(q::Channel{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, Tuple{Nothing, Nothing, Nothing}} = get_tcp_server(get_queue_data(q))
 
+get_local_host_count(q::Channel{Packet}, local_address::IPv4Addr, subnet_mask::Int=24)::Int64 = get_local_host_count(get_queue_data(q), local_address, subnet_mask)
+function get_local_host_count(q::Vector{Packet}, local_address::IPv4Addr, subnet_mask::Int=24)::Int64
+    local_address_mask = typemax(UInt32) << (32 - subnet_mask)
+    local_address = local_address_mask & hton(local_address.host)
+    # Get all IPv4 headers
+    ipv4_headers = [h[2] for h ∈ query_queue(q, [
+        Dict{String, Dict{Symbol, Any}}(
+            "IPv4_header" => Dict{Symbol, Any}()
+        )
+    ])]
+    hosts = Set{UInt32}()
+    for h ∈ ipv4_headers
+        for addr ∈ (h.saddr, h.daddr)
+            if (addr & local_address_mask) == local_address
+                push!(hosts, addr)
+            end
+        end
+    end
+    return length(hosts)
+end
+
 """
     get_local_host(queue, local_address, subnet_mask)::Vector{UInt8}
 
@@ -295,7 +316,7 @@ function get_local_net_host(q::Vector{Packet}, local_address::IPv4Addr, blacklis
         )
     ])]
     local_address_mask = typemax(UInt32) << (32 - subnet_mask)
-    local_address = local_address_mask & ntoh(local_address.host)
+    local_address = local_address_mask & hton(local_address.host)
     hosts = Dict{UInt8, Int}()
     for ipv4 ∈ ipv4_headers
         for header ∈ (ipv4.saddr, ipv4.daddr)

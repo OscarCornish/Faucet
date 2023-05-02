@@ -142,7 +142,7 @@ Uses a scoring algorithm:
 score : (v * c) + s
 ```
 """
-function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any})::Tuple{Int64, Int64}
+function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any})::Tuple{Int64, Float64}
     # Get the queue data
     q = get_queue_data(env[:queue])
 
@@ -153,34 +153,74 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
     end
     
     #@warn "Hardcoded response to determine_method"
-    return 1, 1
+    L = [get_layer_stats(q, Layer_type(i)) for i ∈ 2:4]
     
-    layer_stats = [get_layer_stats(q, Layer_type(i)) for i ∈ 2:4]
+    # Covert score, higher is better : Method i score = scores[i]
+    S = zeros(Float64, length(covert_methods))
+    # Rate at which to send covert packets : Method i rate = rates[i]
+    R = zeros(Float64, length(covert_methods))
 
-    scores = Dict{covert_method, Int64}()
 
-    for method ∈ covert_methods
-        v = 0
-        for layer in layer_stats
-            if method.layer ∈ keys(layer)
-                v = layer[method.layer] / +(collect(values(layer))...)
-            end
+    # Eₗ : Environment length : Number of packets in queue
+    Eₗ = length(q)
+
+    # Eᵣ : Environment rate : (Packets / second)
+    Eᵣ = Eₗ / abs(last(q).cap_header.timestamp - first(q).cap_header.timestamp)
+
+    # Eₛ : Environment desired secrecy : User supplied (Default: 5)
+    Eₛ = env[:desired_secrecy]
+
+    Eₕ = get_local_host_count(q, env[:dest_ip])
+
+    for (i, method) ∈ enumerate(covert_methods)
+        Lᵢ_temp = filter(x -> method.type ∈ keys(x), L)
+        if isempty(Lᵢ_temp)
+            @warn "No packets with valid headers" method.type L
+            continue
         end
-        c = method.covertness
-        s = method.payload_size
-        scores[method] = (v * c) + s
+
+        # Lᵢ : the layer that method i exists on
+        Lᵢ = Lᵢ_temp[1]
+
+        # Lₛ : The sum of packets that have a valid header in Lᵢ
+        Lₛ = +(collect(values(Lᵢ))...)
+
+        # Lₚ : Percentage of total traffic that this layer makes up
+        Lₚ = Lₛ / Eₗ
+
+        # Pᵢ is the percentage of traffic 
+        Pᵢ = Lₚ * (Lᵢ[method.type] / Lₛ)
+
+        # Bᵢ is the bit capacity of method i
+        Bᵢ = method.payload_size
+
+        # Cᵢ is the penalty / bonus for the covertness
+        #  has bounds [0, 2] -> 0% to 200% (± 100%)
+        Cᵢ = 1 - ((method.covertness - Eₛ) / 10)
+
+        # Score for method i
+        #  Pᵢ * Bᵢ : Covert bits / Environment bits
+        #  then weight by covertness
+        @info "S[i]" Pᵢ Bᵢ Cᵢ Pᵢ * Bᵢ * Cᵢ
+        S[i] = Pᵢ * Bᵢ * Cᵢ
+
+        # Rate for method i
+        #  Eᵣ * Pᵢ : Usable header packets / second
+        #  If we used this much it would be +100% of the environment rate, so we scale it down
+        #  by dividing by hosts on the network, Eₕ.
+        #  then weight by covertness
+        #  We don't want to go over the environment rate, so reshape covertness is between [0, 1] (1 being 100% of env rate)
+        #  (Eᵣ * Pᵢ * (Cᵢ / 2)) / Eₕ : Rate of covert packets / second
+        #  ∴ 1 / Eᵣ * Pᵢ * (Cᵢ / 2) : Interval between covert packets
+        @info "R[i]" Eₕ Eᵣ Pᵢ Cᵢ/2 Eₕ / (Eᵣ * Pᵢ * (Cᵢ / 2))
+        R[i] = Eₕ  / (Eᵣ * Pᵢ * (Cᵢ / 2)) 
     end
 
-    time_interval = abs(first(q).Capture_header.timestamp - last(q).Capture_header.timestamp)
-    packets_per_second = length(q) / time_interval
-    target_packets_per_second = packets_per_second * PACKET_SEND_RATE
-    target_interval = round(Int64, 1 / target_packets_per_second)
+    Sᵢ, i = findmax(S)
+    Rᵢ = R[i]
 
-    # Sort scores by second value in pair (score) and return highest
-    highest = find_max_key(scores)
+    @debug "Determined covert method" covert_methods[i].name score=Sᵢ rate=Rᵢ
 
-    # Pretty sure this should be the index of the highest score method, not the method itself
-    @warn "USING HARDCODED RESPONSE (1, 1)" method=highest[1], interval=target_interval
-    return 1, 1
+    return i, Rᵢ
 end
 
