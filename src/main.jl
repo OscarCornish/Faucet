@@ -14,7 +14,7 @@ include("target.jl")
 
 module Environment
 
-    using .Main: Layer_type, get_ip_from_dev, ip_a_search, IPv4Addr, IPAddr, _to_bytes
+    using .Main: Layer_type, get_ip_from_dev, ip_a_search, IPv4Addr, IPAddr, _to_bytes, find_max_key
     export init_queue, get_tcp_server, Packet
 
     include("environment/headers.jl")
@@ -27,7 +27,7 @@ end
 
 module CovertChannels
 
-    using .Main: IPAddr, IPv4Addr, Network_Type, Transport_Type, Layer_type, IPv4, TCP
+    using .Main: IPAddr, IPv4Addr, Network_Type, Transport_Type, Layer_type, IPv4, TCP, find_max_key
     using ..Environment: Packet, get_tcp_server, TCP_SYN, get_queue_data, get_layer_stats, get_header
 
     export determine_method, covert_method, covert_methods, init, encode, couldContainMethod, decode
@@ -41,7 +41,7 @@ module Outbound
 
     using .Main: Target, target, IPAddr, IPv4Addr, Network_Type, Transport_Type, Link_Type, Ethernet, IPv4, TCP, UDP, ARP, to_bytes, ip_address_regex, ip_route_regex, ip_neigh_regex, mac, to_net, _to_bytes, integrity_check
     using ..CovertChannels: craft_change_method_payload, craft_discard_chunk_payload, craft_sentinel_payload
-    using ..Environment: Packet, get_socket, sendto, await_arp_beacon
+    using ..Environment: Packet, get_socket, sendto, await_arp_beacon, get_local_net_host
 
     export send_covert_payload, init_environment
 

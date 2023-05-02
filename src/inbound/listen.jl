@@ -88,7 +88,6 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
     @debug "Listening for sentinel" current_method.name
     while true
         type, kwargs = process_packet(current_method, take!(queue))
-        @warn "Recieved packet" type=type kwargs=kwargs
         if type == :sentinel
             if sentinel_recieved # If we have already recieved a sentinel, we have finished the data
                 break
@@ -98,10 +97,10 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
             end
             sentinel_recieved = true
         elseif sentinel_recieved && type == :method_change
-            (new_method_index, integrity_key) = kwargs
+            (new_method_index, integrity_offset) = kwargs
             @info "Preparing for method change" new_method_index
-            # Beacon out  integrity of chunk
-            ARP_Beacon(integrity_check(chunk, integrity_key), IPv4Addr(local_ip))
+            # Beacon out integrity of chunk
+            ARP_Beacon(integrity_check(chunk) ⊻ integrity_offset, IPv4Addr(local_ip))
             current_method = methods[new_method_index]
             previous = data
             data *= chunk

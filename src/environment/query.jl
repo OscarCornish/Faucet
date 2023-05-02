@@ -280,3 +280,38 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
     return (mac, ip, port)
 end
 get_tcp_server(q::Channel{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, Tuple{Nothing, Nothing, Nothing}} = get_tcp_server(get_queue_data(q))
+
+"""
+    get_local_host(queue, local_address, subnet_mask)::Vector{UInt8}
+
+    Returns the host byte of the local ip address
+"""
+function get_local_net_host(q::Vector{Packet}, local_address::IPv4Addr, blacklist::Vector{UInt8}=[], subnet_mask::Int=24)::UInt8 # return the host byte of the local ip
+    push!(blacklist, 0x00, 0xff) # Do not use .0 or .255
+    # Get all IPv4 headers
+    ipv4_headers = [h[2] for h ∈ query_queue(q, [
+        Dict{String, Dict{Symbol, Any}}(
+            "IPv4_header" => Dict{Symbol, Any}()
+        )
+    ])]
+    local_address_mask = typemax(UInt32) << (32 - subnet_mask)
+    local_address = local_address_mask & ntoh(local_address.host)
+    hosts = Dict{UInt8, Int}()
+    for ipv4 ∈ ipv4_headers
+        for header ∈ (ipv4.saddr, ipv4.daddr)
+            if header & local_address_mask == local_address
+                host_byte = UInt8(header & ~local_address_mask)
+                if haskey(hosts, host_byte)
+                    hosts[host_byte] += 1
+                else
+                    hosts[host_byte] = 1
+                end
+            end
+        end
+    end
+    for b ∈ blacklist
+        delete!(hosts, b)
+    end
+    return find_max_key(hosts) 
+end
+get_local_net_host(q::Channel{Packet}, local_address::IPv4Addr, blacklist::Vector{UInt8}=[], subnet_mask::Int=24)::UInt8 = get_local_net_host(get_queue_data(q), local_address, blacklist, subnet_mask)

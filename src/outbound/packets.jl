@@ -271,7 +271,7 @@ function ARP_Beacon(payload::UInt8, source_ip::IPAddr, send_socket::IOStream=get
     src_ip = _to_bytes(source_ip.host)
     dst_ip = [src_ip[1:3]...; payload]
     iface = get_dev_from_ip(source_ip)
-    @debug "Sending ARP beacon" payload
+    @debug "Sending ARP beacon" encoded_byte=payload
 
     packet = craft_packet(
         payload = Vector{UInt8}(),
@@ -301,29 +301,26 @@ function send_packet(packet::Vector{UInt8}, net_env::Dict{Symbol, Any})::Nothing
     return nothing
 end
 
+function send_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::String, template::Dict{Symbol, Any})::Nothing
+    return send_packet(craft_packet(;encode(m, payload; template)...), net_env)
+end
+
 function send_sentinel_packet(m::covert_method, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
     send_packet(craft_packet(;encode(m, craft_sentinel_payload(m.payload_size); template)...), net_env)
 end
 
-function send_method_change_packet(m::covert_method, method_index::Int, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::String
-    (payload, integrity_key) = craft_change_method_payload(method_index, m.payload_size)
+function send_method_change_packet(m::covert_method, method_index::Int, offset::UInt8, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
+    payload = craft_change_method_payload(method_index, offset, m.payload_size)
     send_packet(craft_packet(;encode(m, payload; template)...), net_env)
-    return integrity_key
 end
 
 function send_discard_chunk_packet(m::covert_method, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
     send_packet(craft_packet(;encode(m, craft_discard_chunk_payload(m.payload_size); template)...), net_env)
 end
 
-# function send_meta_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::Union{String, Unsigned, Int64}, template::Dict{Symbol, Any})::Nothing
-#     return send_packet(craft_packet(;encode(m, craft_meta_payload(payload, m.payload_size); template)...), net_env)
-# end
-
-function send_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::String, template::Dict{Symbol, Any})::Nothing
-    return send_packet(craft_packet(;encode(m, payload; template)...), net_env)
-end
-
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})
+    blacklist = [UInt8(hton(net_env[:dest_ip].host) & 0x000000ff)]
+    @info "Blacklist" blacklist
     current_method_index = 1
     pointer = 1
     chunk_pointer = pointer
@@ -334,6 +331,9 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     payload = enc(raw_payload)
     bits = *(bitstring.(payload)...)
     bits *= lstrip(bitstring(Int64(length(bits) / 8)), '0') # Append length of payload, we will use this to determine where the payload ends later
+
+    # Sleep so that when we determine_method we actually have a good understanding of the environment
+    sleep(time_interval)
     
     # Send meta sentinel to target using methods[1]
     method = methods[current_method_index]
@@ -344,17 +344,15 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     integrity_interval = 6
     packet_count = 0
     check_timeout = 5
-
-    # Sleep so that when we determine_method we actually have a good understanding of the environment
-    sleep(time_interval)
     while pointer <= lastindex(bits)
         method_index, time_interval = determine_method(methods, net_env)
         if method_index != current_method_index || packet_count % integrity_interval == 0
             # Send meta packet to tell target to switch methods
             # Make custom method for changing methods, returning the key for integrity check
-            key = send_method_change_packet(method, method_index, net_env, method_kwargs)
-            # It is likely I've messed up the pointer here...
-            integrity = integrity_check(bits[chunk_pointer:pointer-1], key)
+            integrity = integrity_check(bits[chunk_pointer:pointer-1])
+            known_host = get_local_net_host(net_env[:queue], net_env[:src_ip], blacklist)
+            
+            send_method_change_packet(method, method_index, integrity ⊻ known_host, net_env, method_kwargs)
             
             # Switch methods
             method = methods[method_index]
@@ -367,12 +365,12 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
             end
 
             data = await_arp_beacon(net_env[:dest_ip], check_timeout)
-            if !isnothing(data) && integrity == data # Success!
-                @info "Integrity check passed" method=method.name data
+            if !isnothing(data) && known_host == data  # Success!
+                @debug "Integrity check passed" method=method.name data integrity known_host integrity ⊻ known_host
                 chunk_pointer = pointer
             else # Failure, resend chunk
                 pointer = chunk_pointer
-                @warn "Failed integrity check" method=method.name data
+                @warn "Failed integrity check" method=method.name data integrity known_host integrity ⊻ known_host
                 send_discard_chunk_packet(method, net_env, method_kwargs)
             end
         end

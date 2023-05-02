@@ -157,7 +157,7 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
     
     layer_stats = [get_layer_stats(q, Layer_type(i)) for i ∈ 2:4]
 
-    scores = Vector{Pair{covert_method, Int64}}()
+    scores = Dict{covert_method, Int64}()
 
     for method ∈ covert_methods
         v = 0
@@ -168,7 +168,7 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
         end
         c = method.covertness
         s = method.payload_size
-        push!(scores, method => (v * c) + s)
+        scores[method] = (v * c) + s
     end
 
     time_interval = abs(first(q).Capture_header.timestamp - last(q).Capture_header.timestamp)
@@ -177,7 +177,7 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
     target_interval = round(Int64, 1 / target_packets_per_second)
 
     # Sort scores by second value in pair (score) and return highest
-    highest = first(sort(scores, by=x->x[2], rev=true))[1]
+    highest = find_max_key(scores)
 
     # Pretty sure this should be the index of the highest score method, not the method itself
     @warn "USING HARDCODED RESPONSE (1, 1)" method=highest[1], interval=target_interval

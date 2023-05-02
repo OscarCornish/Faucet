@@ -50,16 +50,24 @@ craft_discard_chunk_payload(capacity::Int)::String = resize_payload(DISCARD_CHUN
 
 craft_sentinel_payload(capacity::Int)::String = resize_payload(SENTINEL, capacity)
 
-function craft_change_method_payload(method_index::Int, capacity::Int)::Tuple{String, String}
-    meta = parse(UInt64, "1" * bitstring(method_index)[end-MINIMUM_CHANNEL_SIZE+2:end], base=2)
-    payload = resize_payload(meta, capacity)
+function craft_change_method_payload(method_index::Int, offset::UInt8, capacity::Int)::String
+    """
+    payload
+    | MINIMUM_CHANNEL_SIZE | UInt8 | ...
+    | Method_index | Offset | padding
+    """
+    meta = "1" * bitstring(method_index)[end-MINIMUM_CHANNEL_SIZE+2:end]
+    meta *= bitstring(offset)
+    padding = join([rand(("1","0")) for i ∈ 1:(capacity - length(meta))])
+    payload = (meta * padding)[1:capacity]
     midx, key = extract_method(payload)
     @assert midx == method_index
-    return payload, key
+    @assert key == offset
+    return payload
 end
 
-function extract_method(payload::String)::Tuple{Int, String} # Method_index, key
-    key = lpad(payload[MINIMUM_CHANNEL_SIZE+1:min(MINIMUM_CHANNEL_SIZE+9, end)], 8, "0")
+function extract_method(payload::String)::Tuple{Int, UInt8} # Method_index, key
+    key = parse(UInt8, lpad(payload[MINIMUM_CHANNEL_SIZE+1:min(MINIMUM_CHANNEL_SIZE+8, end)], 8, "0")[1:8], base=2)
     method_index = parse(Int, payload[2:MINIMUM_CHANNEL_SIZE], base=2)
     return method_index, key
 end
