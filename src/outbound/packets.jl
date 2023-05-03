@@ -318,6 +318,52 @@ function send_discard_chunk_packet(m::covert_method, net_env::Dict{Symbol, Any},
     send_packet(craft_packet(;encode(m, craft_discard_chunk_payload(m.payload_size); template)...), net_env)
 end
 
+"""
+    pad_transmission(payload::bitstring, method::Symbol=:short)::bitstring
+
+    Take the payload and pad it to the nearest byte boundary.
+
+    Methods are:
+        :short => Uses minimal padding, but is less covert
+        :covert => Uses more padding, but is more covert
+"""
+function pad_transmission(raw::String, method::Symbol=PADDING_METHOD)::String
+    if method == :short
+        return raw * "1"
+    elseif method == :covert
+        return raw * lstrip(bitstring(Int64(length(raw) / 8)), '0')
+    else
+        error("Unknown padding method $method")
+    end
+end
+
+"""
+    pad_packet_payload(packet_payload::bitstring, capacity::Int, transmission::bitstring, method::Symbol=:short)::bitstring
+
+    Pad the packet payload to the size of the capacity, depending on the method.
+
+    Transmission is the orginal, unpadded, bits for transmission (post-encryption), used for verification.
+
+    Handles same methods as ['pad_transmission'](@ref)
+"""
+function pad_packet_payload(packet_payload::String, capacity::Int, transmission::String, method::Symbol=PADDING_METHOD)::String
+    if method == :short
+        padding = "0" ^ (capacity - length(packet_payload))
+        @assert remove_padding(pad_transmission(transmission) * padding, method) == transmission "Padding is not valid (:short)"
+        return packet_payload * padding
+    elseif method == :covert
+        padding = join([rand(['0', '1']) for _ in 1:capacity - length(packet_payload)])
+        # Random padding CANNOT be a valid length of the payload
+        #  it's very likely this will happen, but just in case...
+        while remove_padding(pad_transmission(transmission, method) * padding, method) != transmission
+            padding = join([rand(['0', '1']) for _ in 1:capacity - length(packet_payload)])
+        end
+        return packet_payload * padding
+    else
+        error("Unknown padding method $method")
+    end
+end
+
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})
     blacklist = [UInt8(hton(net_env[:dest_ip].host) & 0x000000ff)]
     current_method_index = 1
@@ -328,9 +374,9 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     
     # Encrypt payload and append length, store it as a bitstring
     payload = enc(raw_payload)
-    bits = *(bitstring.(payload)...)
-    bits *= lstrip(bitstring(Int64(length(bits) / 8)), '0') # Append length of payload, we will use this to determine where the payload ends later
-
+    _bits = *(bitstring.(payload)...)
+    bits = pad_transmission(_bits)
+    
     # Sleep so that when we determine_method we actually have a good understanding of the environment
     sleep(time_interval)
     
@@ -375,7 +421,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         end
         # Send payload packet
         if pointer+method.payload_size-1 > lastindex(bits)
-            payload = rpad("0" * bits[pointer:lastindex(bits)], method.payload_size, '0')
+            payload = pad_packet_payload("0" * bits[pointer:lastindex(bits)], method.payload_size, _bits)
             @debug "Packet covert payload (Without MP)(FINAL)" payload=bits[pointer:lastindex(bits)] chunk_length=pointer-chunk_pointer total_sent=pointer
         else
             payload = "0" * bits[pointer:pointer+method.payload_size-2]
@@ -386,7 +432,6 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         packet_count += 1
         sleep(time_interval)
     end
-    send_sentinel_packet(method, net_env, method_kwargs)
     send_sentinel_packet(method, net_env, method_kwargs)
     @info "Endded communication via SENTINEL" via=method.name
 end

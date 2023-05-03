@@ -1,19 +1,9 @@
 using AES
 using Dates
 
-function dec(data::String)::Vector{UInt8}
-    # Remove padding by finding the length we added earlier
-    for i = length(data):-1:1
-        if i % 8 == 0
-            bitlen = lstrip(bitstring(Int64(i/8)), '0')
-            if length(data) - i >= length(bitlen)
-                if data[i+1:i+length(bitlen)] == bitlen
-                    data = data[1:i]
-                    break
-                end
-            end
-        end
-    end
+function dec(_data::String)::Vector{UInt8}
+    data = remove_padding(_data)
+
     # Convert to bytes
     bytes = Vector{UInt8}()
     if length(data) % 8 != 0
@@ -31,8 +21,14 @@ function dec(data::String)::Vector{UInt8}
     )
     cipher = AES.AESCipher(;key_length=128, mode=AES.CBC, key=target.AES_PSK)
     
-    # decrypt
-    return decrypt(ct, cipher).parent
+    decrypted = decrypt(ct, cipher).parent
+
+    padding = decrypted[end]
+    if decrypted[end-padding+1:end] == [padding for i in 1:padding]
+        return decrypted[1:end-padding]
+    else
+        return decrypted
+    end
 end
     
 # Get queue with filter
@@ -92,7 +88,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
             if sentinel_recieved # If we have already recieved a sentinel, we have finished the data
                 break
             else
-                #@info "Sentined recieved, beginning data collection"
+                @info "Sentined recieved, beginning data collection"
                 sentinel_recieved = true
             end
             sentinel_recieved = true
@@ -127,19 +123,9 @@ function listen_forever(queue::Channel{Packet}, methods::Vector{covert_method})
     while true
         data = listen(queue, methods)
         file = "comms/$(now().instant.periods.value).bytes"
-        #@info "Communication stream finished, writing to file" file=file
+        @info "Communication stream finished, writing to file" file=file
         open(file, "w") do io
             write(io, data)
         end
     end
 end
-
-#### issues
-
-# How to handle multiple sentinels?  Do we need to?  Can we just limit to one sender one receiver
-# What happens if the sender breaks off?  Do we need to handle this?  Can we just assume that the sender will not break off?
-
-
-# Also fix other queue, probably mismatch in the queue being used somewhere...
-# otherwise just fake it for now, getting the algo to alternate would be nice
-# + plus can define send times, so it will probably be faster.
