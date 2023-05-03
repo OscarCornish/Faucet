@@ -2,7 +2,7 @@
 
 include("main.jl")
 
-using ..Inbound: init_receiver, listen
+using ..Inbound: init_receiver, listen, listen_forever
 using ..CovertChannels: covert_methods
 
 queue = init_receiver(:local)
@@ -15,6 +15,6 @@ data = listen(queue, covert_methods)
 #     write(io, data)
 # end
 
-@info "Data recieved" covert_payload=String(strip_padding(data))
+@info "Data recieved" covert_payload=String(data)
 
 exit(0)

@@ -6,11 +6,11 @@
 
 =#
 
+PADDING_METHOD = :covert # Convert to argument
+
 include("constants.jl")
 include("utils.jl")
 include("target.jl")
-
-#run(Cmd(["ping", "-c", "1", string(target.ip)]))
 
 module Environment
 
@@ -39,7 +39,7 @@ end
 
 module Outbound
 
-    using .Main: Target, target, IPAddr, IPv4Addr, Network_Type, Transport_Type, Link_Type, Ethernet, IPv4, TCP, UDP, ARP, to_bytes, ip_address_regex, ip_route_regex, ip_neigh_regex, mac, to_net, _to_bytes, integrity_check
+    using .Main: Target, target, IPAddr, IPv4Addr, Network_Type, Transport_Type, Link_Type, Ethernet, IPv4, TCP, UDP, ARP, to_bytes, ip_address_regex, ip_route_regex, ip_neigh_regex, mac, to_net, _to_bytes, integrity_check, PADDING_METHOD, remove_padding
     using ..CovertChannels: craft_change_method_payload, craft_discard_chunk_payload, craft_sentinel_payload
     using ..Environment: Packet, get_socket, sendto, await_arp_beacon, get_local_net_host
 
@@ -53,7 +53,7 @@ end
 
 module Inbound
 
-    using .Main: MINIMUM_CHANNEL_SIZE, target, integrity_check, IPv4Addr
+    using .Main: MINIMUM_CHANNEL_SIZE, target, integrity_check, IPv4Addr, PADDING_METHOD, remove_padding
     using ..Environment: init_queue, local_bound_traffic, Packet, get_local_ip
     using ..CovertChannels: SENTINEL, DISCARD_CHUNK, couldContainMethod, decode, covert_method, extract_method
     using ..Outbound: ARP_Beacon

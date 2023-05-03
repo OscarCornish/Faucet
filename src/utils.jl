@@ -88,8 +88,32 @@ function integrity_check(chunk::String)::UInt8
     #   - offset (from method change)
     #  Can calculate active_host
     #  integrity ⊻ offset = active_host
+end
 
+"""
+    remove_padding(payload::bitstring, method::Symbol=PADDING_METHOD)::bitstring
 
+    Removes the padding applied by [`pad_transmission`](@ref) from the payload.
+"""
+function remove_padding(payload::String, method::Symbol=PADDING_METHOD)::String
+    if method == :short
+        return rstrip(payload, '0')[1:end-1]
+    elseif method == :covert
+        for i = length(payload):-1:1
+            if i % 8 == 0
+                bitlen = lstrip(bitstring(Int64(i/8)), '0')
+                if length(payload) - i >= length(bitlen)
+                    if payload[i+1:i+length(bitlen)] == bitlen
+                        payload = payload[1:i]
+                        return payload
+                    end
+                end
+            end
+        end
+        error("Incorrect padding")
+    else
+        error("Padding method $method not supported")
+    end
 end
 
 const ip_address_regex = r"^(?<index>\d+): (?<iface>[\w\d]+)(?:@[\w\d]+)?: <(?<ifType>[A-Z,_]+)> mtu (?<mtu>\d+) [\w ]+ state (?<state>[A-Z]+) group default qlen (?<qlen>\d+)[\s ]+link\/ether (?<mac>(?:[a-f\d]{2}:){5}[a-f\d]{2}) brd (?<brd>[a-f\d:]{17}) [\w\- ]+[\s ]+inet (?<ip>(?:\d{1,3}.){3}\d{1,3})\/(?<subnet>\d+)"m
@@ -130,15 +154,6 @@ function get_dev_from_mac(mac::NTuple{6, UInt8})::String
         end
     end
     return ""
-end
-
-function strip_padding(data::Vector{UInt8})::Vector{UInt8}
-    padding = data[end]
-    if data[end-padding+1:end] == [padding for i in 1:padding]
-        return data[1:end-padding]
-    else
-        return data
-    end
 end
 
 find_max_key(dict::Dict) = collect(keys(dict))[findmax(collect(values(dict)))[2]]
