@@ -414,7 +414,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         # Remove blacklisted protocols that have served their penalty
         for (idx, (proto, penal)) ∈ enumerate(protocol_blacklist)
             if penal <= packet_count
-                @info "Removing protocol from blacklist" protocol=methods[proto].name
+                @debug "Removing protocol from blacklist" protocol=methods[proto].name
                 deleteat!(protocol_blacklist, idx)
             end
         end
@@ -432,23 +432,23 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                 method = methods[i]
                 method_kwargs = init(method, net_env)
                 send_recovery_packet(method, last_integrity, known_host, net_env, method_kwargs)
-                @info "Attempting to recover with method" method=methods[i].name
+                @debug "Attempting to recover with method" method=methods[i].name
                 
-                if await_arp_beacon(net_env[:dest_ip], known_host, check_timeout*2) # be generous with timeout
+                # Allow a larger timeout here, as the recovery process is a bit longer.
+                if await_arp_beacon(net_env[:dest_ip], known_host, check_timeout*2)
                     recovery_timeouts = (time() - last_verification_time, packet_count - last_verification_packet_count)
                     last_verification_time = time()
                     last_verification_packet_count = packet_count
-                    @info "Recovered with method" method=methods[current_method_index].name
                     break
                 end
-                @warn "Failed to recover with method" method=methods[current_method_index].name
             end
             if isempty(idxs)
                 error("Failed to recover with any method")
             end
+            @info "Recovered with method" method=methods[current_method_index].name
+
             # Iterate through methods until we find one that works, it will respond and verify...
             recovery_mode = false
-            
         end
         # Determine method doesn't need to know about when penalties are lifted, so just send the blacklisted indexs
         method_index, time_interval = determine_method(methods, net_env, [x[1] for x ∈ protocol_blacklist])
@@ -456,9 +456,6 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
             @label verify
             # Send meta packet to tell target to switch methods
             # Make custom method for changing methods, returning the key for integrity check
-            open("sender.log", "w") do io
-                write(io, bits[chunk_pointer:pointer-1] * final_padding)
-            end
             integrity = integrity_check(bits[chunk_pointer:pointer-1] * final_padding)
             known_host = get_local_net_host(net_env[:queue], net_env[:src_ip], host_blacklist)
             
@@ -469,9 +466,11 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
             method_kwargs = init(method, net_env)
             current_method_index = method_index
             if packet_count % integrity_interval == 0
-                @info "Performing regular interval integrity check" interval=integrity_interval
+                @debug "Performing regular interval integrity check" interval=integrity_interval
+            elseif method_index != current_method_index
+                @debug "Switched method, performing integrity check" method=method.name interval=time_interval
             else
-                @info "Switched method, performing integrity check" method=method.name interval=time_interval
+                @debug "Final integrity check"
             end
 
             if await_arp_beacon(net_env[:dest_ip], known_host, check_timeout) # Success
@@ -519,5 +518,5 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         sleep(time_interval)
     end
     send_sentinel_packet(method, net_env, method_kwargs)
-    @info "Endded communication via SENTINEL" via=method.name
+    @debug "Endded communication via SENTINEL" via=method.name
 end

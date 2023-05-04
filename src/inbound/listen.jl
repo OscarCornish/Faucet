@@ -50,15 +50,11 @@ end
 function try_recover(packet::Packet, integrities::Vector{Tuple{Int, UInt8}}, methods::Vector{covert_method})::Int
     for (i, method) ∈ enumerate(methods)
         if couldContainMethod(packet, method)
-            @debug "Checking recovery for method" method=method.name MINIMUM_CHANNEL_SIZE
-
             data = bitstring(decode(method, packet))
             if length(data) >= MINIMUM_CHANNEL_SIZE + 12 && data[1:MINIMUM_CHANNEL_SIZE] == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
                 offset = parse(UInt8, data[MINIMUM_CHANNEL_SIZE+1:MINIMUM_CHANNEL_SIZE+8], base=2)
                 transmission_length = parse(Int, data[MINIMUM_CHANNEL_SIZE+9:MINIMUM_CHANNEL_SIZE+12], base=2)
-                @warn "Recovery packet detected" o=offset tl=transmission_length
                 for (length, integrity) ∈ reverse(integrities)[1:min(end, 4)] # Go back max 4 integrities, to be safe
-                    @debug "Checking integrity" li=(length, integrity) length % 0x1f
                     if length % 0x10 == transmission_length - 1 # The -1 is an artefact of the pointer on the sender side
                         ARP_Beacon(integrity ⊻ offset, IPv4Addr(get_local_ip()))
                         return i
@@ -142,10 +138,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
             sentinel_recieved = true
         elseif sentinel_recieved && type == :method_change
             (new_method_index, integrity_offset) = kwargs
-            @info "Preparing for method change" new_method_index
-            open("recv.log", "w") do io
-                write(io, chunk)
-            end
+            @debug "Preparing for method change" new_method_index
             integrity = integrity_check(chunk)
             # Beacon out integrity of chunk
             ARP_Beacon(integrity ⊻ integrity_offset, IPv4Addr(local_ip))
@@ -169,7 +162,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
         end
     end
     data *= chunk
-    @info "Data collection complete, decrypting..."
+    @debug "Data collection complete, decrypting..."
     return dec(data)
 end
 

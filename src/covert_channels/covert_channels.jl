@@ -215,7 +215,7 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
         # If all scores are 0 then we have no valid methods, default to 1, with a large time interval
         return 1, 100.0
     end
-    @debug "Determined covert method" covert_methods[i].name score=Sᵢ rate=Rᵢ
+    # @debug "Determined covert method" covert_methods[i].name score=Sᵢ rate=Rᵢ
 
     # Sort scores by second value in pair (score) and return highest
     return i, 1.0
