@@ -309,6 +309,10 @@ function send_sentinel_packet(m::covert_method, net_env::Dict{Symbol, Any}, temp
     send_packet(craft_packet(;encode(m, craft_sentinel_payload(m.payload_size); template)...), net_env)
 end
 
+function send_recovery_packet(m::covert_method, last_verification::Tuple{Int64, UInt8}, known_host::UInt8, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
+    send_packet(craft_packet(;encode(m, craft_recovery_payload(m.payload_size, last_verification, known_host); template)...), net_env)
+end
+
 function send_method_change_packet(m::covert_method, method_index::Int, offset::UInt8, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
     payload = craft_change_method_payload(method_index, offset, m.payload_size)
     send_packet(craft_packet(;encode(m, payload; template)...), net_env)
@@ -365,7 +369,12 @@ function pad_packet_payload(packet_payload::String, capacity::Int, transmission:
 end
 
 function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_method}, net_env::Dict{Symbol, Any})
-    blacklist = [UInt8(hton(net_env[:dest_ip].host) & 0x000000ff)]
+    host_blacklist = [UInt8(hton(net_env[:dest_ip].host) & 0x000000ff)]
+    penalty_size = 30 # Current packet + `penalty_size` : When it is no longer "blacklisted" (-1 for permenant blacklist)
+    protocol_failures = 0
+    max_failures = 2 # Number of failures until we switch to next method
+    protocol_blacklist = Vector{Tuple{Int64, Int64}}() # (Protocol, Release_packet)
+
     current_method_index = 1
     pointer = 1
     chunk_pointer = pointer
@@ -389,13 +398,64 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     integrity_interval = 6
     packet_count = 0
     check_timeout = 5
+    finished = false
+
+    # Recovery mode
+    recovery_mode = false
+    last_verification_time = time()
+    last_verification_packet_count = packet_count
+    recovery_timeouts = (50, integrity_interval) # Time interval, packet interval
+    last_integrity = (0, 0x00) # (length, integrity value)
+    # To start, we don't want to go straight into recovery mode, but we do want the possibility - so just add a delay
+
     while pointer <= lastindex(bits)
-        method_index, time_interval = determine_method(methods, net_env)
+        # Remove blacklisted protocols that have served their penalty
+        for (idx, (proto, penal)) ∈ enumerate(protocol_blacklist)
+            if penal <= packet_count
+                @info "Removing protocol from blacklist" protocol=methods[proto].name
+                deleteat!(protocol_blacklist, idx)
+            end
+        end
+        if recovery_mode
+            @info "Entering recovery mode" timeouts=recovery_timeouts
+            while !(time() - last_verification_time > recovery_timeouts[1] * 1.5 || packet_count - last_verification_packet_count > recovery_timeouts[2] * 1.5)
+                sleep(1)
+            end
+            S, R = method_calculations(methods, net_env, [x[1] for x ∈ protocol_blacklist])
+            idxs = sortperm(S)
+            while !isempty(idxs)
+                i = pop!(idxs)
+                sleep(R[i])
+                known_host = get_local_net_host(net_env[:queue], net_env[:src_ip], host_blacklist)
+                method = methods[i]
+                method_kwargs = init(method, net_env)
+                send_recovery_packet(method, last_integrity, known_host, net_env, method_kwargs)
+                @info "Attempting to recover with method" method=methods[i].name
+                
+                if await_arp_beacon(net_env[:dest_ip], known_host, check_timeout*2) # be generous with timeout
+                    recovery_timeouts = (time() - last_verification_time, packet_count - last_verification_packet_count)
+                    last_verification_time = time()
+                    last_verification_packet_count = packet_count
+                    @info "Recovered with method" method=methods[current_method_index].name
+                    break
+                end
+                @warn "Failed to recover with method" method=methods[current_method_index].name
+            end
+            if isempty(idxs)
+                error("Failed to recover with any method")
+            end
+            # Iterate through methods until we find one that works, it will respond and verify...
+            recovery_mode = false
+            
+        end
+        # Determine method doesn't need to know about when penalties are lifted, so just send the blacklisted indexs
+        method_index, time_interval = determine_method(methods, net_env, [x[1] for x ∈ protocol_blacklist])
         if method_index != current_method_index || packet_count % integrity_interval == 0
+            @label verify
             # Send meta packet to tell target to switch methods
             # Make custom method for changing methods, returning the key for integrity check
             integrity = integrity_check(bits[chunk_pointer:pointer-1])
-            known_host = get_local_net_host(net_env[:queue], net_env[:src_ip], blacklist)
+            known_host = get_local_net_host(net_env[:queue], net_env[:src_ip], host_blacklist)
             
             send_method_change_packet(method, method_index, integrity ⊻ known_host, net_env, method_kwargs)
             
@@ -409,26 +469,44 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                 @info "Switched method, performing integrity check" method=method.name interval=time_interval
             end
 
-            data = await_arp_beacon(net_env[:dest_ip], check_timeout)
-            if !isnothing(data) && known_host == data  # Success!
-                @debug "Integrity check passed" method=method.name data integrity known_host integrity ⊻ known_host
+            if await_arp_beacon(net_env[:dest_ip], known_host, check_timeout) # Success
+                protocol_failures = 0
+                @debug "Integrity check passed" method=method.name integrity known_host integrity ⊻ known_host
                 chunk_pointer = pointer
+                last_integrity = (chunk_pointer, integrity)
             else # Failure, resend chunk
+                protocol_failures += 1
+                if protocol_failures == max_failures
+                    push!(protocol_blacklist, (method_index, packet_count + penalty_size))
+                    @info "Blacklisting protocol" protocol=method.name
+                    protocol_failures = 0
+                    recovery_mode = true
+                end
                 pointer = chunk_pointer
-                @warn "Failed integrity check" method=method.name data integrity known_host integrity ⊻ known_host
+                @warn "Failed integrity check" method=method.name integrity known_host integrity ⊻ known_host
                 send_discard_chunk_packet(method, net_env, method_kwargs)
+                finished = false
+            end
+            if finished
+                break
             end
         end
         # Send payload packet
-        if pointer+method.payload_size-1 > lastindex(bits)
+        if !finished && pointer+method.payload_size-1 > lastindex(bits)
             payload = pad_packet_payload("0" * bits[pointer:lastindex(bits)], method.payload_size, _bits)
             @debug "Packet covert payload (Without MP)(FINAL)" payload=bits[pointer:lastindex(bits)] chunk_length=pointer-chunk_pointer total_sent=pointer
-        else
+            pointer += length(pointer:lastindex(bits))
+            finished = true
+        elseif !finished
             payload = "0" * bits[pointer:pointer+method.payload_size-2]
             @debug "Packet covert payload (Without MP)" payload=bits[pointer:pointer+method.payload_size-2] chunk_length=pointer-chunk_pointer total_sent=pointer
+            pointer += method.payload_size-1
         end
-        pointer += method.payload_size-1
         send_packet(method, net_env, payload, method_kwargs)
+        if finished
+            @debug "Payload sent, verifiying integrity"
+            @goto verify
+        end
         packet_count += 1
         sleep(time_interval)
     end

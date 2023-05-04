@@ -50,6 +50,24 @@ craft_discard_chunk_payload(capacity::Int)::String = resize_payload(DISCARD_CHUN
 
 craft_sentinel_payload(capacity::Int)::String = resize_payload(SENTINEL, capacity)
 
+function craft_recovery_payload(capacity::Int, (verification_length, integrity)::Tuple{Int64, UInt8}, known_host::UInt8)::String
+    """
+    | MINIMUM_CHANNEL_SIZE | UInt8 | 4 bits | ...
+    | verification_length | integrity ⊻ known_host | verification_length % 0x1f | padding
+    """
+    if capacity < MINIMUM_CHANNEL_SIZE + 8 + 4
+        @error "Capacity too small for recovery payload" capacity=capacity
+        return ""
+    end
+    meta = "1" ^ MINIMUM_CHANNEL_SIZE
+    meta *= bitstring(integrity ⊻ known_host)
+    payload = meta * bitstring(verification_length % 0x10)[end-3:end]
+    padding = join([rand(("1","0")) for i ∈ 1:(capacity - length(payload))])
+    @info "Recovery payload" vl=verification_length tl=verification_length % 0x1f meta payload
+    @assert length(payload) + length(padding) == capacity
+    return payload * padding
+end
+
 function craft_change_method_payload(method_index::Int, offset::UInt8, capacity::Int)::String
     """
     payload

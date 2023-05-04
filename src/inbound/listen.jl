@@ -47,6 +47,30 @@ function init_receiver(bfp_filter::Union{String, Symbol})::Channel{Packet}
     return init_queue(bfp_filter)
 end
 
+function try_recover(packet::Packet, integrities::Vector{Tuple{Int, UInt8}}, methods::Vector{covert_method})::Int
+    for (i, method) ∈ enumerate(methods)
+        if couldContainMethod(packet, method)
+            @debug "Checking recovery for method" method=method.name MINIMUM_CHANNEL_SIZE
+
+            data = bitstring(decode(method, packet))
+            if length(data) >= MINIMUM_CHANNEL_SIZE + 12 && data[1:MINIMUM_CHANNEL_SIZE] == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
+                offset = parse(UInt8, data[MINIMUM_CHANNEL_SIZE+1:MINIMUM_CHANNEL_SIZE+8], base=2)
+                transmission_length = parse(Int, data[MINIMUM_CHANNEL_SIZE+9:MINIMUM_CHANNEL_SIZE+12], base=2)
+                @warn "Recovery packet detected" o=offset tl=transmission_length
+                for (length, integrity) ∈ reverse(integrities)[1:min(end, 4)] # Go back max 4 integrities, to be safe
+                    @debug "Checking integrity" li=(length, integrity) length % 0x1f
+                    if length % 0x10 == transmission_length - 1 # The -1 is an artefact of the pointer on the sender side
+                        ARP_Beacon(integrity ⊻ offset, IPv4Addr(get_local_ip()))
+                        return i
+                    end
+                end
+            end
+        end
+    end
+    return -1 # Not a recovery packet
+end
+
+
 function process_meta(data::String)::Tuple{Symbol, Any}
     meta = data[1:MINIMUM_CHANNEL_SIZE]
     if meta == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
@@ -71,7 +95,14 @@ function process_packet(current_method::covert_method, packet::Packet)::Tuple{Sy
     return (:pass, nothing)
 end
 
-# Once sentinel starts, initiate proper listening
+import Base: -, >
+function -(a::Tuple{Float64, Int64}, b::Tuple{Float64, Int64})::Tuple{Float64, Int64}
+    return (a[1] - b[1], a[2] - b[2])
+end
+function >(a::Tuple{Float64, Int64}, b::Tuple{Float64, Int64})::NTuple{2, Bool}
+    return (a[1] > b[1], a[2] > b[2])
+end
+
 
 function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{UInt8}
     # Listen for sentinel
@@ -81,9 +112,26 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
     chunk = ""
     sentinel_recieved = false
     current_method = methods[1]
+    packets = 0
+    integrities = Vector{Tuple{Int, UInt8}}() # (transimission_length, integrity)
+    last_interval_size = Tuple{Float64, Int64}[(0.0, 0)]
+    last_interval_point = Tuple{Float64, Int64}[(0.0, 0)]
     @debug "Listening for sentinel" current_method.name
     while true
-        type, kwargs = process_packet(current_method, take!(queue))
+        current_point = Tuple{Float64, Int64}[(time(), packets)]
+        recovery = any(((current_point .- last_interval_point) .> last_interval_size)[1])
+        packet = take!(queue)
+        type, kwargs = process_packet(current_method, packet)
+        if recovery && type != :method_change
+            index = try_recover(packet, integrities, methods)
+            if index != -1
+                @info "Recovering to new method" method=methods[index].name
+                current_method = methods[index]
+                last_interval_point = current_point
+                continue
+                # Recovery successful
+            end
+        end
         if type == :sentinel
             if sentinel_recieved # If we have already recieved a sentinel, we have finished the data
                 break
@@ -95,21 +143,26 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
         elseif sentinel_recieved && type == :method_change
             (new_method_index, integrity_offset) = kwargs
             @info "Preparing for method change" new_method_index
+            integrity = integrity_check(chunk)
             # Beacon out integrity of chunk
-            ARP_Beacon(integrity_check(chunk) ⊻ integrity_offset, IPv4Addr(local_ip))
+            ARP_Beacon(integrity ⊻ integrity_offset, IPv4Addr(local_ip))
             current_method = methods[new_method_index]
             previous = data
             data *= chunk
             chunk = ""
-
+            push!(integrities, (length(data), integrity))
+            last_interval_size = current_point .- last_interval_point
+            last_interval_point = current_point
         elseif sentinel_recieved && type == :integrity_fail
             @warn "Integrity check failed of last chunk, reverting..."
             chunk = ""
+            pop!(integrities) # Remove last integrity, it was wrong...
             data = previous # Revert 'commit' of chunk
         
         elseif sentinel_recieved && type == :data
             @debug "Data received, adding to chunk" chunk_length=length(chunk) total_length=length(data) data=kwargs
             chunk *= kwargs
+            packets += 1
         end
     end
     data *= chunk

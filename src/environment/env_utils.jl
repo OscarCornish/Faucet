@@ -97,17 +97,23 @@ const ARP_SEQUENCE_SLICE  = 13:22
 const ARP_SRC_SLICE       = 29:32
 const ARP_DEST_SLICE      = 39:42
 
-function await_arp_beacon(ip::IPAddr, timeout::Int64=5)
+function await_arp_beacon(ip::IPAddr, target::UInt8, timeout::Int64=5)
     socket = get_socket(Int32(17), Int32(3), Int32(0x0300))
     start = time_ns()
+    heard = Vector{UInt8}()
     while (time_ns() - start) < timeout * 1e9
         raw = read(socket)
         if length(raw) >= 42 # Mininum size of an ARP packet
             if raw[ARP_SEQUENCE_SLICE] == ARP_SEQUENCE
                 if raw[ARP_SRC_SLICE] == _to_bytes(ip.host)
-                    return raw[ARP_DEST_SLICE][4]
+                    if raw[ARP_DEST_SLICE][4] == target
+                        return true
+                    end
+                    push!(heard, raw[ARP_DEST_SLICE][4])
                 end
             end
         end
     end
+    @warn "$target not found" heard
+    return false
 end

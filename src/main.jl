@@ -40,7 +40,7 @@ end
 module Outbound
 
     using .Main: Target, target, IPAddr, IPv4Addr, Network_Type, Transport_Type, Link_Type, Ethernet, IPv4, TCP, UDP, ARP, to_bytes, ip_address_regex, ip_route_regex, ip_neigh_regex, mac, to_net, _to_bytes, integrity_check, PADDING_METHOD, remove_padding
-    using ..CovertChannels: craft_change_method_payload, craft_discard_chunk_payload, craft_sentinel_payload
+    using ..CovertChannels: craft_change_method_payload, craft_discard_chunk_payload, craft_sentinel_payload, craft_recovery_payload, method_calculations
     using ..Environment: Packet, get_socket, sendto, await_arp_beacon, get_local_net_host
 
     export send_covert_payload, init_environment
