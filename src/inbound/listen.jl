@@ -143,6 +143,9 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
         elseif sentinel_recieved && type == :method_change
             (new_method_index, integrity_offset) = kwargs
             @info "Preparing for method change" new_method_index
+            open("recv.log", "w") do io
+                write(io, chunk)
+            end
             integrity = integrity_check(chunk)
             # Beacon out integrity of chunk
             ARP_Beacon(integrity ⊻ integrity_offset, IPv4Addr(local_ip))

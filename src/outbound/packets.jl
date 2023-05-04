@@ -398,6 +398,8 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     integrity_interval = 6
     packet_count = 0
     check_timeout = 5
+
+    final_padding = ""
     finished = false
 
     # Recovery mode
@@ -454,7 +456,10 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
             @label verify
             # Send meta packet to tell target to switch methods
             # Make custom method for changing methods, returning the key for integrity check
-            integrity = integrity_check(bits[chunk_pointer:pointer-1])
+            open("sender.log", "w") do io
+                write(io, bits[chunk_pointer:pointer-1] * final_padding)
+            end
+            integrity = integrity_check(bits[chunk_pointer:pointer-1] * final_padding)
             known_host = get_local_net_host(net_env[:queue], net_env[:src_ip], host_blacklist)
             
             send_method_change_packet(method, method_index, integrity ⊻ known_host, net_env, method_kwargs)
@@ -486,6 +491,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                 @warn "Failed integrity check" method=method.name integrity known_host integrity ⊻ known_host
                 send_discard_chunk_packet(method, net_env, method_kwargs)
                 finished = false
+                final_padding = ""
             end
             if finished
                 break
@@ -495,7 +501,9 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         if !finished && pointer+method.payload_size-1 > lastindex(bits)
             payload = pad_packet_payload("0" * bits[pointer:lastindex(bits)], method.payload_size, _bits)
             @debug "Packet covert payload (Without MP)(FINAL)" payload=bits[pointer:lastindex(bits)] chunk_length=pointer-chunk_pointer total_sent=pointer
-            pointer += length(pointer:lastindex(bits))
+            payload_length = length(pointer:lastindex(bits))
+            pointer += payload_length - 1
+            final_padding = payload[payload_length+1:end]
             finished = true
         elseif !finished
             payload = "0" * bits[pointer:pointer+method.payload_size-2]
