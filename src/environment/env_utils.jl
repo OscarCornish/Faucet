@@ -97,7 +97,7 @@ const ARP_DEST_SLICE      = 39:42
 Await an arp beacon from the source address, return nothing if timeout is reached, otherwise return the data
 """
 await_arp_beacon(source_ip::String, timeout::Int)::Union{Nothing, UInt8} = await_arp_beacon(IPv4Addr(source_ip), timeout)
-function await_arp_beacon(ip::IPAddr, target::UInt8, timeout::Int64=5)
+function await_arp_beacon(ip::IPv4Addr, target::UInt8, timeout::Int64=5)
     # Get a fresh socket to listen on
     socket = get_socket(AF_PACKET, SOCK_RAW, ETH_P_ALL)
     start = time_ns()

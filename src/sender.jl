@@ -1,14 +1,12 @@
-#ENV["JULIA_DEBUG"] = "all"
 
 include("main.jl")
 
+using ..CovertChannels: covert_methods
 using .Environment: init_queue
-using .CovertChannels: covert_methods
 using .Outbound: init_environment, send_covert_payload
 
 @debug "Creating queue"
-queue = init_queue()
-net_env = init_environment(target, queue)
+net_env = init_environment(target, init_queue())
 
 covert_payload = Vector{UInt8}("Recoverable hello world!")
 
@@ -17,3 +15,5 @@ covert_payload = Vector{UInt8}("Recoverable hello world!")
 send_covert_payload(covert_payload, covert_methods, net_env)
 
 @info "Finished sending covert payload"
+
+exit(0)

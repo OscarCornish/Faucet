@@ -349,6 +349,6 @@ function get_local_net_host(q::Vector{Packet}, local_address::IPv4Addr, blacklis
         delete!(hosts, b)
     end
     # Return the most active local host
-    return find_max_key(hosts) 
+    return collect(keys(hosts))[findmax(collect(values(hosts)))[2]]
 end
 get_local_net_host(q::Channel{Packet}, local_address::IPv4Addr, blacklist::Vector{UInt8}=[], subnet_mask::Int=24)::UInt8 = get_local_net_host(get_queue_data(q), local_address, blacklist, subnet_mask)

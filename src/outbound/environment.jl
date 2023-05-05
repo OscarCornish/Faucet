@@ -22,12 +22,12 @@ function mac_from_ip(ip::String, type::Symbol=:local)::NTuple{6, UInt8}
     end
     error("Unable to find MAC address for IP: $ip")
 end
-mac_from_ip(ip::IPAddr, type::Symbol=:local)::NTuple{6, UInt8} = mac_from_ip(string(ip), type)
+mac_from_ip(ip::IPv4Addr, type::Symbol=:local)::NTuple{6, UInt8} = mac_from_ip(string(ip), type)
 
 """
 Return the interface, gateway, and source ip for the given destination ip
 """
-function get_ip_addr(dest_ip::String)::Tuple{String, Union{IPAddr, Nothing}, IPAddr} # Interface, Gateway, Source
+function get_ip_addr(dest_ip::String)::Tuple{String, Union{IPv4Addr, Nothing}, IPv4Addr} # Interface, Gateway, Source
     for match ∈ eachmatch(ip_route_regex, readchomp(`ip r get $dest_ip`))
         if match[:dest_ip] == dest_ip
             iface = string(match[:iface])
@@ -37,7 +37,7 @@ function get_ip_addr(dest_ip::String)::Tuple{String, Union{IPAddr, Nothing}, IPA
         end
     end
 end
-get_ip_addr(dest_ip::IPAddr)::Tuple{String, Union{IPAddr, Nothing}, IPAddr} = get_ip_addr(string(dest_ip))
+get_ip_addr(dest_ip::IPv4Addr)::Tuple{String, Union{IPv4Addr, Nothing}, IPv4Addr} = get_ip_addr(string(dest_ip))
 
 const arping_regex = r"^Unicast reply from (?:\d{1,3}\.){3}\d{1,3} \[(?<mac>(?:[A-F\d]{2}:){5}[A-F\d]{2})\]"m
 
@@ -56,7 +56,7 @@ function first_hop_mac(target::String, iface::String)::NTuple{6, UInt8}
     end
     return nothing
 end
-first_hop_mac(target::IPAddr, iface::String)::NTuple{6, UInt8} = first_hop_mac(string(target), iface)
+first_hop_mac(target::IPv4Addr, iface::String)::NTuple{6, UInt8} = first_hop_mac(string(target), iface)
 
 """
 Get the interface for the given ip
@@ -69,7 +69,7 @@ function get_dev_from_ip(ip::String)::String
     end
     error("Unable to find device for IP: $ip")
 end
-get_dev_from_ip(ip::IPAddr)::String = get_dev_from_ip(string(ip))
+get_dev_from_ip(ip::IPv4Addr)::String = get_dev_from_ip(string(ip))
 
 """
 Initialise an environment "context" for the given target
