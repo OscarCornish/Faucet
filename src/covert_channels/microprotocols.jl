@@ -46,7 +46,14 @@ function resize_payload(payload::Unsigned, capacity::Int)::String
     return content * padding # Pad with random bits
 end
 
-craft_discard_chunk_payload(capacity::Int)::String = resize_payload(DISCARD_CHUNK, capacity)
+function craft_discard_chunk_payload(capacity::Int, bits::String, pointer::Int64)::Tuple{Int64, String}
+    chunk = bitstring(DISCARD_CHUNK)[end-MINIMUM_CHANNEL_SIZE+1:end]
+    pointer_offset = capacity - length(chunk)
+    payload = chunk * bits[pointer:pointer+pointer_offset-1]
+    @assert length(payload) == capacity
+    @assert pointer_offset == length(payload) - length(chunk)
+    return pointer_offset, payload
+end
 
 craft_sentinel_payload(capacity::Int)::String = resize_payload(SENTINEL, capacity)
 

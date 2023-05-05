@@ -318,8 +318,10 @@ function send_method_change_packet(m::covert_method, method_index::Int, offset::
     send_packet(craft_packet(;encode(m, payload; template)...), net_env)
 end
 
-function send_discard_chunk_packet(m::covert_method, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
-    send_packet(craft_packet(;encode(m, craft_discard_chunk_payload(m.payload_size); template)...), net_env)
+function send_discard_chunk_packet(m::covert_method, bits::String, pointer::Int64, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Int64
+    pointer_offset, payload = craft_discard_chunk_payload(m.payload_size, bits, pointer)
+    send_packet(craft_packet(;encode(m, payload; template)...), net_env)
+    return pointer_offset
 end
 
 """
@@ -451,7 +453,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
             recovery_mode = false
         end
         # Determine method doesn't need to know about when penalties are lifted, so just send the blacklisted indexs
-        method_index, time_interval = determine_method(methods, net_env, [x[1] for x ∈ protocol_blacklist])
+        method_index, time_interval = determine_method(methods, net_env, [x[1] for x ∈ protocol_blacklist], current_method_index)
         if method_index != current_method_index || packet_count % integrity_interval == 0
             @label verify
             # Send meta packet to tell target to switch methods
@@ -488,7 +490,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                 end
                 pointer = chunk_pointer
                 @warn "Failed integrity check" method=method.name integrity known_host integrity ⊻ known_host
-                send_discard_chunk_packet(method, net_env, method_kwargs)
+                pointer += send_discard_chunk_packet(method, bits, pointer, net_env, method_kwargs)
                 finished = false
                 final_padding = ""
             end

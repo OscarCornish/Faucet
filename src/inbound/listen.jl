@@ -54,16 +54,16 @@ function try_recover(packet::Packet, integrities::Vector{Tuple{Int, UInt8}}, met
             if length(data) >= MINIMUM_CHANNEL_SIZE + 12 && data[1:MINIMUM_CHANNEL_SIZE] == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
                 offset = parse(UInt8, data[MINIMUM_CHANNEL_SIZE+1:MINIMUM_CHANNEL_SIZE+8], base=2)
                 transmission_length = parse(Int, data[MINIMUM_CHANNEL_SIZE+9:MINIMUM_CHANNEL_SIZE+12], base=2)
-                for (length, integrity) ∈ reverse(integrities)[1:min(end, 4)] # Go back max 4 integrities, to be safe
-                    if length % 0x10 == transmission_length - 1 # The -1 is an artefact of the pointer on the sender side
+                for (len, integrity) ∈ reverse(integrities)[1:min(end, 4)] # Go back max 4 integrities, to be safe
+                    if len % 0x10 == transmission_length - 1 # The -1 is an artefact of the pointer on the sender side
                         ARP_Beacon(integrity ⊻ offset, IPv4Addr(get_local_ip()))
-                        return i, length
+                        return i, len
                     end
                 end
             end
         end
     end
-    return -1 # Not a recovery packet
+    return -1, 0 # Not a recovery packet
 end
 
 
@@ -72,7 +72,7 @@ function process_meta(data::String)::Tuple{Symbol, Any}
     if meta == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
         return (:sentinel, nothing)
     elseif meta == bitstring(DISCARD_CHUNK)[end-MINIMUM_CHANNEL_SIZE+1:end]
-        return (:integrity_fail, nothing)
+        return (:integrity_fail, data[MINIMUM_CHANNEL_SIZE+1:end])
     else # Return 
         return (:method_change, extract_method(data))
     end
@@ -119,10 +119,10 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
         packet = take!(queue)
         type, kwargs = process_packet(current_method, packet)
         if recovery && type != :method_change
-            (index, length) = try_recover(packet, integrities, methods)
+            (index, len) = try_recover(packet, integrities, methods)
             if index != -1
                 chunk = ""
-                data = data[1:length]
+                data = data[1:len]
                 @info "Recovering to new method" method=methods[index].name
                 current_method = methods[index]
                 last_interval_point = current_point
@@ -153,7 +153,7 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
             last_interval_point = current_point
         elseif sentinel_recieved && type == :integrity_fail
             @warn "Integrity check failed of last chunk, reverting..."
-            chunk = ""
+            chunk = kwargs
             pop!(integrities) # Remove last integrity, it was wrong...
             data = previous # Revert 'commit' of chunk
         

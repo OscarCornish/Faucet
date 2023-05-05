@@ -121,7 +121,7 @@ covert_methods = Vector{covert_method}([
     tcp_ack_bounce,
 ])
 
-function method_calculations(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any}, Eₚ::Vector{Int64}=[])::NTuple{2, Vector{Float64}}
+function method_calculations(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any}, Eₚ::Vector{Int64}=[], current_method::Int64=0)::NTuple{2, Vector{Float64}}
     # Get the queue data
     q = get_queue_data(env[:queue])
 
@@ -196,14 +196,17 @@ function method_calculations(covert_methods::Vector{covert_method}, env::Dict{Sy
     for i ∈ Eₚ
         S[i] *= 0.1 # 10% of original score
     end
+
+    current_method != 0 && (S[current_method] *= 1.1) # Encourage current method (+10%)
+
     S[1] *= 4 # Encourage IPv4_Identification so we can block it later
 
     return S, R
 end
 
-function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any}, penalities::Vector{Int64}=[])::Tuple{Int64, Float64}
+function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any}, penalities::Vector{Int64}=[], current_method::Int64=0)::Tuple{Int64, Float64}
     # Determine the best method to use
-    S, R = method_calculations(covert_methods, env, penalities)
+    S, R = method_calculations(covert_methods, env, penalities, current_method)
 
     # i : index of best method
     # Sᵢ : score of best method
