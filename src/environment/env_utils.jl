@@ -98,14 +98,21 @@ Await an arp beacon from the source address, return nothing if timeout is reache
 """
 await_arp_beacon(source_ip::String, timeout::Int)::Union{Nothing, UInt8} = await_arp_beacon(IPv4Addr(source_ip), timeout)
 function await_arp_beacon(ip::IPAddr, target::UInt8, timeout::Int64=5)
+    # Get a fresh socket to listen on
     socket = get_socket(AF_PACKET, SOCK_RAW, ETH_P_ALL)
     start = time_ns()
+    # Log all heard beacons, for debugging
     heard = Vector{UInt8}()
     while (time_ns() - start) < timeout * 1e9
+        # Read a packet
         raw = read(socket)
-        if length(raw) >= 42 # Mininum size of an ARP packet
+        # Confirm it is more than the mininum size of an ARP packet
+        if length(raw) >= 42
+            # Check it matches our boilerplate ARP
             if raw[ARP_SEQUENCE_SLICE] == ARP_SEQUENCE
+                # Check it is from the source we are looking for
                 if raw[ARP_SRC_SLICE] == _to_bytes(ip.host)
+                    # Check it is to the target we are looking for
                     if raw[ARP_DEST_SLICE][4] == target
                         return true
                     end
