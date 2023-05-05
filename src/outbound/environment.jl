@@ -1,3 +1,8 @@
+"""
+Get the mac address of the interface with the given ip
+
+This is a unstable wrapper around `ip a` and `ip neigh`
+"""
 function mac_from_ip(ip::String, type::Symbol=:local)::NTuple{6, UInt8}
     if type == :local
         for match ∈ eachmatch(ip_address_regex, readchomp(`ip a`))
@@ -17,19 +22,12 @@ function mac_from_ip(ip::String, type::Symbol=:local)::NTuple{6, UInt8}
     end
     error("Unable to find MAC address for IP: $ip")
 end
-mac_from_ip(ip::IPAddr, type::Symbol=:local)::NTuple{6, UInt8} = mac_from_ip(string(ip), type)
+mac_from_ip(ip::IPv4Addr, type::Symbol=:local)::NTuple{6, UInt8} = mac_from_ip(string(ip), type)
 
-function subnet_mask(ip::String)::UInt32
-    for match ∈ eachmatch(ip_address_regex, readchomp(`ip a`))
-        if match[:ip] == ip
-            return subnet_mask(parse(Int64, match[:subnet]))
-        end
-    end
-    error("Unable to find subnet mask for IP: $ip")
-end
-subnet_mask(ip::IPAddr) = subnet_mask(string(ip))
-
-function get_ip_addr(dest_ip::String)::Tuple{String, Union{IPAddr, Nothing}, IPAddr} # Interface, Gateway, Source
+"""
+Return the interface, gateway, and source ip for the given destination ip
+"""
+function get_ip_addr(dest_ip::String)::Tuple{String, Union{IPv4Addr, Nothing}, IPv4Addr} # Interface, Gateway, Source
     for match ∈ eachmatch(ip_route_regex, readchomp(`ip r get $dest_ip`))
         if match[:dest_ip] == dest_ip
             iface = string(match[:iface])
@@ -39,10 +37,13 @@ function get_ip_addr(dest_ip::String)::Tuple{String, Union{IPAddr, Nothing}, IPA
         end
     end
 end
-get_ip_addr(dest_ip::IPAddr)::Tuple{String, Union{IPAddr, Nothing}, IPAddr} = get_ip_addr(string(dest_ip))
+get_ip_addr(dest_ip::IPv4Addr)::Tuple{String, Union{IPv4Addr, Nothing}, IPv4Addr} = get_ip_addr(string(dest_ip))
 
 const arping_regex = r"^Unicast reply from (?:\d{1,3}\.){3}\d{1,3} \[(?<mac>(?:[A-F\d]{2}:){5}[A-F\d]{2})\]"m
 
+"""
+Get the first hop mac address for the given target ip
+"""
 function first_hop_mac(target::String, iface::String)::NTuple{6, UInt8}
     try
         return mac_from_ip(target, :remote)
@@ -55,8 +56,11 @@ function first_hop_mac(target::String, iface::String)::NTuple{6, UInt8}
     end
     return nothing
 end
-first_hop_mac(target::IPAddr, iface::String)::NTuple{6, UInt8} = first_hop_mac(string(target), iface)
+first_hop_mac(target::IPv4Addr, iface::String)::NTuple{6, UInt8} = first_hop_mac(string(target), iface)
 
+"""
+Get the interface for the given ip
+"""
 function get_dev_from_ip(ip::String)::String
     for match ∈ eachmatch(ip_address_regex, readchomp(`ip a`))
         if match[:ip] == ip
@@ -65,13 +69,17 @@ function get_dev_from_ip(ip::String)::String
     end
     error("Unable to find device for IP: $ip")
 end
-get_dev_from_ip(ip::IPAddr)::String = get_dev_from_ip(string(ip))
+get_dev_from_ip(ip::IPv4Addr)::String = get_dev_from_ip(string(ip))
 
+"""
+Initialise an environment "context" for the given target
+"""
 function init_environment(target::Target, q::Channel{Packet}, covertness::Int=5)::Dict{Symbol, Any}
     @assert isa(target.ip, IPv4Addr)
     @assert 1 ≤ covertness ≤ 10
 
     env = Dict{Symbol, Any}()
+    # What is the "covertness" we are aiming to achieve?
     env[:desired_secrecy] = covertness
     # Get dest ip as UInt32
     env[:dest_ip] = target.ip
@@ -82,8 +90,6 @@ function init_environment(target::Target, q::Channel{Packet}, covertness::Int=5)
     env[:src_ip] = src_ip
     # Get mac address from sending interface
     env[:src_mac] = mac_from_ip(env[:src_ip])
-    # Get subnet mask from sending interface
-    env[:subnet_mask] = subnet_mask(env[:src_ip])
     # Get first hop mac address
     env[:dest_first_hop_mac] = isnothing(gw) ? first_hop_mac(env[:dest_ip], iface) : first_hop_mac(gw, iface)
     # Target object
@@ -91,6 +97,6 @@ function init_environment(target::Target, q::Channel{Packet}, covertness::Int=5)
     # Queue
     env[:queue] = q
     # Get socket
-    env[:sock] = get_socket(Int32(17), Int32(3), Int32(0xff00))
+    env[:sock] = get_socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW)
     return env
 end

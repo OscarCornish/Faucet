@@ -10,6 +10,9 @@
 
 =#
 
+# Common tcp services (80, 443, etc.)
+const TCP_SERVICES = [UInt16(80), UInt16(443), UInt16(20), UInt16(21), UInt16(22), UInt16(25), UInt16(143)]
+
 """
     get_headers(p::Packet)::Vector{Header}
 
@@ -117,8 +120,6 @@ end
 layer2index = get_layer2index(HEADER_Ethernet)
 
 """
-    query_header(header, arguments)::Bool
-
 Returns true if the arguments match the header
 
 # Example
@@ -154,7 +155,7 @@ query_header(::Nothing, ::Dict{Symbol, Any})::Bool = false
 """
     query_headers(headers, arguments)::Bool
 
-Returns true if the arguments match the headers
+Returns true if arguments match the their respective headers
 
 # Example
 ```markdown
@@ -192,7 +193,7 @@ Arguments is a vector of dictionaries, each dictionary is a match case
 A match case is a dictionary of header types and required values in that header
 
 # Example
-```markdown
+```julia
 arguments = [
     {
         TCP_header => {
@@ -206,9 +207,11 @@ arguments = [
         }
     }
 ]
+```
+```markdown
 will return all headers for packets that either have:
-    (tcp header with a source port of 12049 AND destination port of 80) OR
-    (ipv4 header with an ihl of 5 or 6)
+    (tcp header with a source port of `12049` *AND* destination port of `80`) *OR*
+    (ipv4 header with an ihl of `5` *OR* `6`)
 ```
 """
 function query_queue(q::Vector{Packet}, arguments::Vector{Dict{String, Dict{Symbol, Any}}})::Vector{Vector{Header}}
@@ -223,16 +226,13 @@ function query_queue(q::Vector{Packet}, arguments::Vector{Dict{String, Dict{Symb
 end
 query_queue(q::Channel{Packet}, args::Vector{Dict{String, Dict{Symbol, Any}}})::Vector{Vector{Header}} = query_queue(get_queue_data(q), args)
 
-# Common tcp services (80, 443, etc.)
-const TCP_SERVICES = [UInt16(80), UInt16(443), UInt16(20), UInt16(21), UInt16(22), UInt16(25), UInt16(143)]
-
 """
     get_tcp_server(queue)::(MAC, IP, Port)
 
 Returns the MAC address, IP address, and port of the most recently active TCP server, using common TCP service ports and SYN packets
 Returns nothing if no server can be found
 """
-function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, Tuple{Nothing, Nothing, Nothing}}
+function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, NTuple{3, Nothing}}
     common_query = Vector{Dict{String, Dict{Symbol, Any}}}([
         Dict{String, Dict{Symbol, Any}}(
             "TCP_header" => Dict{Symbol, Any}(
@@ -240,7 +240,7 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
             )
         )
     ])
-    # Clients connected to common TCP Services
+    # Clients connected to common TCP Services, TCP traffic to them is favourable (In terms of covertness)
     services = query_queue(q, common_query)
     
     syn_query = Vector{Dict{String, Dict{Symbol, Any}}}([
@@ -253,24 +253,30 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
 
     service_mac, service_ip, service_port = nothing, nothing, nothing
     if !isempty(services)
-        service = pop!(services) # Most recently active one
+        # Take the most recently active one
+        service = pop!(services)
         # This is a packet going toward tcp service
-        # Ethernet_header -> tcp server mac (of next hop from local perspective)
-        # IP_header.daddr -> tcp server ip
-        # TCP_header.dport -> tcp server port
         service_mac = getfield(service[layer2index["Ethernet_header"]], :source)
+        # Ethernet_header -> tcp server mac (of next hop from local perspective)
         service_ip = getfield(service[layer2index["IPv4_header"]], :daddr)
+        # IP_header.daddr -> tcp server ip
         service_port = getfield(service[layer2index["TCP_header"]], :dport)
+        # TCP_header.dport -> tcp server port
     else
         syn_services = query_queue(q, syn_query)
         if !isempty(syn_services)
-            service = pop!(syn_services) # Most recently active one
+            # Take most recently active one
+            service = pop!(syn_services)
             # Again, a packet going toward a tcp server
             service_mac = getfield(service[layer2index["Ethernet_header"]], :source)
+            # Ethernet_header -> tcp server mac (of next hop from local perspective)
             service_ip = getfield(service[layer2index["IPv4_header"]], :daddr)
+            # IP_header.daddr -> tcp server ip
             service_port = getfield(service[layer2index["TCP_header"]], :dport)
+            # TCP_header.dport -> tcp server port
         end
     end
+    # Currently, the test environment does not support getting a valid tcp server like this (to be fixed...)
     @debug "Found TCP Server, but using hardcoded (due to test environment)" service_ip service_mac service_port
     ip = 0xc91e140a # 10.20.30.201
     mac_raw = match(r"^Unicast reply from (?:\d{1,3}\.){3}\d{1,3} \[(?<mac>(?:[A-F\d]{2}:){5}[A-F\d]{2})\]"m, readchomp(`arping -c 1 10.20.30.201`))[:mac]
@@ -279,11 +285,13 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
     port = 0x0050
     return (mac, ip, port)
 end
-get_tcp_server(q::Channel{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, Tuple{Nothing, Nothing, Nothing}} = get_tcp_server(get_queue_data(q))
+get_tcp_server(q::Channel{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, NTuple{3, Nothing}} = get_tcp_server(get_queue_data(q))
 
 get_local_host_count(q::Channel{Packet}, local_address::IPv4Addr, subnet_mask::Int=24)::Int64 = get_local_host_count(get_queue_data(q), local_address, subnet_mask)
 function get_local_host_count(q::Vector{Packet}, local_address::IPv4Addr, subnet_mask::Int=24)::Int64
+    # CIDR notation is number of bits that denote the network, the rest are host bits
     local_address_mask = typemax(UInt32) << (32 - subnet_mask)
+    # We want hosts on the same subnet so ignore the host bits
     local_address = local_address_mask & hton(local_address.host)
     # Get all IPv4 headers
     ipv4_headers = [h[2] for h ∈ query_queue(q, [
@@ -308,21 +316,27 @@ end
     Returns the host byte of the local ip address
 """
 function get_local_net_host(q::Vector{Packet}, local_address::IPv4Addr, blacklist::Vector{UInt8}=[], subnet_mask::Int=24)::UInt8 # return the host byte of the local ip
-    push!(blacklist, 0x00, 0xff) # Do not use .0 or .255
+    # Do not use .0 or .255 (network and broadcast addresses)
+    # Sometimes they will not be, but this is a simpler and "good enough" solution
+    push!(blacklist, 0x00, 0xff)
     # Get all IPv4 headers
     ipv4_headers = [h[2] for h ∈ query_queue(q, [
         Dict{String, Dict{Symbol, Any}}(
             "IPv4_header" => Dict{Symbol, Any}()
         )
     ])]
+    # CIDR notation is number of bits that denote the network, the rest are host bits
     local_address_mask = typemax(UInt32) << (32 - subnet_mask)
+    # We want hosts on the same subnet so ignore the host bits
     local_address = local_address_mask & hton(local_address.host)
     hosts = Dict{UInt8, Int}()
     for ipv4 ∈ ipv4_headers
         for header ∈ (ipv4.saddr, ipv4.daddr)
             if header & local_address_mask == local_address
+                # Invert the subnet mask to make it a host mask
                 host_byte = UInt8(header & ~local_address_mask)
                 if haskey(hosts, host_byte)
+                    # Increment the number of times we have seen this host byte
                     hosts[host_byte] += 1
                 else
                     hosts[host_byte] = 1
@@ -330,9 +344,11 @@ function get_local_net_host(q::Vector{Packet}, local_address::IPv4Addr, blacklis
             end
         end
     end
+    # Remove blacklisted host bytes from our list
     for b ∈ blacklist
         delete!(hosts, b)
     end
-    return find_max_key(hosts) 
+    # Return the most active local host
+    return collect(keys(hosts))[findmax(collect(values(hosts)))[2]]
 end
 get_local_net_host(q::Channel{Packet}, local_address::IPv4Addr, blacklist::Vector{UInt8}=[], subnet_mask::Int=24)::UInt8 = get_local_net_host(get_queue_data(q), local_address, blacklist, subnet_mask)

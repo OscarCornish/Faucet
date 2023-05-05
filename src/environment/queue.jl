@@ -105,8 +105,12 @@ Convert a pointer to a packet into a Layer{Ethernet_header} object, with all hea
 function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Layer{Ethernet_header}
     layer_index = 2
     offset = 0
-    layers::Vector{Layer{<:Header}} = [Layer(Layer_type(layer_index), Ethernet_header(p), missing)] # Push layers here as we make them, then replace the missing backwards...
+    # Push layers here as we make them, then we can walk backwards and craft a full payload
+    layers::Vector{Layer{<:Header}} = [Layer(Layer_type(layer_index), Ethernet_header(p), missing)]
+    # Start at the lowest layer (Ethernet)
     node = HEADER_Ethernet
+    # Don't exceed layer 3 (we +1 to make it 4, Transport, and we don't have any application layer protocols defined)
+    # Would be an improvement to work this out by finding the depth of our HEADER_Ethernet tree...
     while layer_index ≤ 3
         prev_layer = layers[end]::Layer{<:Header}
         offset += getoffset(prev_layer)
@@ -118,6 +122,7 @@ function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Layer{Ethernet_
                 layer_index += 1
                 node = child
                 push!(layers, Layer(Layer_type(layer_index), child.type(p+offset), missing))
+                # There is only 1 header per layer, so skip the search
                 break
             end
         end
@@ -128,6 +133,8 @@ function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Layer{Ethernet_
     end
     l = layers[end]::Layer{<:Header}
     offset += getoffset(l)
+
+    # If there is a payload, read it into a vector
     payload_size = packet_size - offset
     if payload_size > 0
         payload = zeros(UInt8, payload_size)
@@ -137,15 +144,19 @@ function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Layer{Ethernet_
     else
         payload = Vector{UInt8}()
     end
-    # println("Payload size: ", payload_size)
+
+    # Set the payload to the payload of the lowest layer
     l.payload = payload
+    # Decrement layer index to walk backwards
     layer_index -= 1
+    # Walk backwards through the layers, setting the payload of each layer to the layer above it, stopping at the link-layer (ETHERNET)
     while layer_index ≥ 2
         layer_index -= 1
-        packet = layers[layer_index]::Layer{<:Header} # Minus 1 because our layers start at 2
+        packet = layers[layer_index]::Layer{<:Header}
         packet.payload = l
         l = packet
     end
+    # Return the lowest layer (ETHERNET)
     return l
 end
 
@@ -168,6 +179,9 @@ function get_callback(queue::Channel{Packet})::Function
     return callback
 end 
 
+"""
+Get the local IP address of a device, if one is not given, assume default device
+"""
 function get_local_ip(device::String)::String
     match = get_ip_from_dev(device)
     if isnothing(match)
@@ -177,59 +191,31 @@ function get_local_ip(device::String)::String
 end
 get_local_ip() = get_local_ip(get_dev())
 
-#=
-
-    Alternative to init_queue, that uses raw sockets instead of libpcap
-    not using as libpcap allows the use of BFP filters, but will leave anyway.
-
-function alternative_sniffer(q::Channel{Packet}, socket::IOStream)::Nothing
-    place_holder = Capture_header(Timeval(0, 0), 0, 0)
-    while true
-        raw = read(socket)
-        pkt_pntr = Base.unsafe_convert(Ptr{UInt8}, raw)
-        pkt = Packet(place_holder, packet_from_pointer(pkt_pntr, Int32(length(raw))))
-        if q.n_avail_items == ENVIRONMENT_QUEUE_SIZE
-            show(stderr, "text/plain", "Queue full, taking")
-            take!(q)
-        end
-        put!(q, pkt)
-        show(stderr, "text/plain", ".")
-    end
-end
-
-
-function alternative()::Channel{Packet}
-    queue = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
-    socket = get_socket(Int32(17), Int32(3), Int32(0x0300))
-    @debug "Starting alternative sniffer" queue socket
-    @async alternative_sniffer(queue, socket)
-    return queue
-end
-
-=#
-
 """
-    init_queue(device::String, bfp_filter_string::String="")::Channel{Packet}
+    init_queue(device::String, bpf_filter_string::String="")::Channel{Packet}
 
 Given the device to open the queue on, return a Channel{Packet} which will be filled with packets
 """
-function init_queue(device::String, bfp_filter_string::String="")::Channel{Packet}
-    #return alternative()
+function init_queue(device::String, bpf_filter_string::String="")::Channel{Packet}
     queue = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
     handle = pcap_open_live(device, -1, true)
-    # Set the filter if we have one
-    if bfp_filter_string != ""
-        program = Ref{bfp_prog}()
-        pcap_compile(handle, program, bfp_filter_string, Int32(1), UInt32(0))
+    # Set the filter if one is supplied
+    if bpf_filter_string != ""
+        program = Ref{bpf_prog}()
+        pcap_compile(handle, program, bpf_filter_string, Int32(1), UInt32(0))
+        # Add filter to pcap handle
         pcap_setfilter(handle, program)
         pcap_freecode(program)
     end
     close_pcap() = pcap_breakloop(handle)
-    # Add a hook to close the pcap on exit
+    # Add a hook to close the pcap on exit, so the program exits cleanly
     atexit(close_pcap)
+    # Create a fuction with the queue bound to it, so we don't have to deal with passing it every time
     callback = get_callback(queue)
     @debug "Creating pcap sniffer" device=device
+    # Run the listener in a seperate thread
+    #  we use errormonitor here so errors on this thread are sent to main thread
     errormonitor(@async pcap_loop(handle, -1, callback, C_NULL))
     return queue
 end
-init_queue(bfp_filter::String="")::Channel{Packet} = init_queue(get_dev(), bfp_filter)
+init_queue(bpf_filter::String="")::Channel{Packet} = init_queue(get_dev(), bpf_filter)
