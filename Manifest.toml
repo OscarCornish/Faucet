@@ -2,7 +2,7 @@
 
 julia_version = "1.8.2"
 manifest_format = "2.0"
-project_hash = "661d5f12c7a499503df73bb362c2346636d66769"
+project_hash = "4f4811aa9e5f3325dda20dcb1998d34b438b1900"
 
 [[deps.AES]]
 deps = ["Random", "StaticArrays"]
@@ -12,6 +12,11 @@ version = "0.1.2"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
+
+[[deps.CRC]]
+git-tree-sha1 = "b7ba7f0d727433c961909b329c4d2263268da4c9"
+uuid = "44b605c4-b955-5f2b-9b6d-d2bd01d3d205"
+version = "4.0.0"
 
 [[deps.CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
