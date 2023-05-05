@@ -19,7 +19,7 @@ module Environment
 
     include("environment/headers.jl")
     include("environment/query.jl")
-    include("environment/bfp.jl")
+    include("environment/bpf.jl")
     include("environment/queue.jl")
     include("environment/env_utils.jl")
 
@@ -28,7 +28,7 @@ end
 module CovertChannels
 
     using .Main: IPAddr, IPv4Addr, Network_Type, Transport_Type, Layer_type, IPv4, TCP, find_max_key
-    using ..Environment: Packet, get_tcp_server, TCP_SYN, get_queue_data, get_layer_stats, get_header, get_local_host_count
+    using ..Environment: Packet, get_tcp_server, get_queue_data, get_layer_stats, get_header, get_local_host_count
 
     export determine_method, covert_method, covert_methods, init, encode, couldContainMethod, decode
 
@@ -41,7 +41,7 @@ module Outbound
 
     using .Main: Target, target, IPAddr, IPv4Addr, Network_Type, Transport_Type, Link_Type, Ethernet, IPv4, TCP, UDP, ARP, to_bytes, ip_address_regex, ip_route_regex, ip_neigh_regex, mac, to_net, _to_bytes, integrity_check, PADDING_METHOD, remove_padding
     using ..CovertChannels: craft_change_method_payload, craft_discard_chunk_payload, craft_sentinel_payload, craft_recovery_payload, method_calculations
-    using ..Environment: Packet, get_socket, sendto, await_arp_beacon, get_local_net_host
+    using ..Environment: Packet, get_socket, sendto, await_arp_beacon, get_local_net_host, AF_PACKET, SOCK_RAW, ETH_P_ALL, IPPROTO_RAW
 
     export send_covert_payload, init_environment
 

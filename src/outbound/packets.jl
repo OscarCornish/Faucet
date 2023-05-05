@@ -266,7 +266,7 @@ end
 
 Send out a beacon with the given payload. The payload is a tuple of 6 bytes.
 """
-function ARP_Beacon(payload::UInt8, source_ip::IPAddr, send_socket::IOStream=get_socket(Int32(17), Int32(3), Int32(0xff00)))::Nothing
+function ARP_Beacon(payload::UInt8, source_ip::IPAddr, send_socket::IOStream=get_socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW))::Nothing
     src_mac = mac_from_ip(source_ip, :local) # This function is used by the receiver, so the src addr is the target addr
     src_ip = _to_bytes(source_ip.host)
     dst_ip = [src_ip[1:3]...; payload]

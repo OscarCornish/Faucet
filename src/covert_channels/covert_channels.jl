@@ -1,5 +1,16 @@
 #=
 
+    Constant definitions
+
+=#
+
+const TCP_ACK           = 0x0010
+const TCP_SYN           = 0x0002
+const TCP_SYN_ACK       = 0x0012
+const TCP_PSH_ACK       = 0x0018
+
+#=
+
     Covert channels
 
 =#

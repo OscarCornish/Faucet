@@ -1,4 +1,4 @@
-import Base: -
+import Base: -, ntoh
 
 #=
 
@@ -13,13 +13,13 @@ const IPPROTO_TCP       = 0x06
 const IPPROTO_UDP       = 0x11
 const ETHERTYPE_ARP     = 0x0806
 
-const SOCK_RAW          = 17
-const ETH_P_ALL         = 0x0003
-
-const TCP_ACK           = 0x0010
-const TCP_SYN           = 0x0002
-const TCP_SYN_ACK       = 0x0012
-const TCP_PSH_ACK       = 0x0018
+const AF_PACKET         = Int32(17)     # Capture entire packet
+const ETH_P_ALL         = Int32(0x0300) # Capture all ethernet frames (Ingoing & Outgoing)
+const SOCK_RAW          = Int32(3)      # Raw socket (For listening)
+const IPPROTO_RAW       = Int32(255)    # Raw IP packet (For sending)
+const ETH_ALEN          = Cuchar(6) # Length of MAC address
+const ETH_P_IP          = 0x0800  # IP protocol
+const ARPHRD_ETHER      = Cushort(1) # Ethernet hardware format
 
 #=
 
@@ -54,7 +54,31 @@ struct Capture_header
     length::Int32
 end
 
-# Protocol header definitions, taken from relevant header files
+#=
+
+    Protocol header definitions
+
+    _protocol are headers as defined in C,
+     they are processed into a more verbose version for convinience
+
+=#
+
+struct Ethernet_header <: Header
+    destination::NTuple{6, UInt8}
+    source::NTuple{6, UInt8}
+    protocol::UInt16
+    function Ethernet_header(p::Ptr{UInt8})::Ethernet_header
+        return unsafe_load(Ptr{Ethernet_header}(p))
+    end
+end
+
+getoffset(::Ethernet_header)::Int64         = sizeof(Ethernet_header)
+getprotocol(hdr::Ethernet_header)::UInt16   = ntoh(hdr.protocol)
+
+struct Packet
+    cap_header::Capture_header
+    payload::Layer{Ethernet_header}
+end
 
 struct ARP_header <: Header
     hardware_type::UInt16
@@ -73,23 +97,6 @@ end
 
 getoffset(::ARP_header)::Int64 = sizeof(ARP_header)
 getprotocol(::ARP_header)::UInt8 = 0x0
-
-struct Ethernet_header <: Header
-    destination::NTuple{6, UInt8}
-    source::NTuple{6, UInt8}
-    protocol::UInt16
-    function Ethernet_header(p::Ptr{UInt8})::Ethernet_header
-        return unsafe_load(Ptr{Ethernet_header}(p))
-    end
-end
-
-getoffset(::Ethernet_header)::Int64         = sizeof(Ethernet_header)
-getprotocol(hdr::Ethernet_header)::UInt16   = ntoh(hdr.protocol)
-
-struct Packet
-    cap_header::Capture_header
-    payload::Layer{Ethernet_header}
-end
 
 # First read base header, then we can deal with options etc.
 struct _IPv4_header

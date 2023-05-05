@@ -72,6 +72,7 @@ function init_environment(target::Target, q::Channel{Packet}, covertness::Int=5)
     @assert 1 ≤ covertness ≤ 10
 
     env = Dict{Symbol, Any}()
+    # What is the "covertness" we are aiming to achieve?
     env[:desired_secrecy] = covertness
     # Get dest ip as UInt32
     env[:dest_ip] = target.ip
@@ -91,6 +92,6 @@ function init_environment(target::Target, q::Channel{Packet}, covertness::Int=5)
     # Queue
     env[:queue] = q
     # Get socket
-    env[:sock] = get_socket(Int32(17), Int32(3), Int32(0xff00))
+    env[:sock] = get_socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW)
     return env
 end
