@@ -33,18 +33,18 @@ end
     
 # Get queue with filter
 
-function init_receiver(bfp_filter::Union{String, Symbol})::Channel{Packet}
-    if bfp_filter == :local
-        bfp_filter = local_bound_traffic()
+function init_receiver(bpf_filter::Union{String, Symbol})::Channel{Packet}
+    if bpf_filter == :local
+        bpf_filter = local_bound_traffic()
     end
-    if bfp_filter == :all
-        bfp_filter = ""
+    if bpf_filter == :all
+        bpf_filter = ""
     end
-    @debug "Initializing receiver" filter=bfp_filter
-    if typeof(bfp_filter) != String
-        throw(ArgumentError("bfp_filter must be a string, :local, or :all"))
+    @debug "Initializing receiver" filter=bpf_filter
+    if typeof(bpf_filter) != String
+        throw(ArgumentError("bpf_filter must be a string, :local, or :all"))
     end
-    return init_queue(bfp_filter)
+    return init_queue(bpf_filter)
 end
 
 function try_recover(packet::Packet, integrities::Vector{Tuple{Int, UInt8}}, methods::Vector{covert_method})::Tuple{Int64, Int64}

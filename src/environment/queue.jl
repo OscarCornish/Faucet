@@ -180,7 +180,7 @@ get_local_ip() = get_local_ip(get_dev())
 #=
 
     Alternative to init_queue, that uses raw sockets instead of libpcap
-    not using as libpcap allows the use of BFP filters, but will leave anyway.
+    not using as libpcap allows the use of bpf filters, but will leave anyway.
 
 function alternative_sniffer(q::Channel{Packet}, socket::IOStream)::Nothing
     place_holder = Capture_header(Timeval(0, 0), 0, 0)
@@ -209,18 +209,18 @@ end
 =#
 
 """
-    init_queue(device::String, bfp_filter_string::String="")::Channel{Packet}
+    init_queue(device::String, bpf_filter_string::String="")::Channel{Packet}
 
 Given the device to open the queue on, return a Channel{Packet} which will be filled with packets
 """
-function init_queue(device::String, bfp_filter_string::String="")::Channel{Packet}
+function init_queue(device::String, bpf_filter_string::String="")::Channel{Packet}
     #return alternative()
     queue = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
     handle = pcap_open_live(device, -1, true)
     # Set the filter if we have one
-    if bfp_filter_string != ""
-        program = Ref{bfp_prog}()
-        pcap_compile(handle, program, bfp_filter_string, Int32(1), UInt32(0))
+    if bpf_filter_string != ""
+        program = Ref{bpf_prog}()
+        pcap_compile(handle, program, bpf_filter_string, Int32(1), UInt32(0))
         pcap_setfilter(handle, program)
         pcap_freecode(program)
     end
@@ -232,4 +232,4 @@ function init_queue(device::String, bfp_filter_string::String="")::Channel{Packe
     errormonitor(@async pcap_loop(handle, -1, callback, C_NULL))
     return queue
 end
-init_queue(bfp_filter::String="")::Channel{Packet} = init_queue(get_dev(), bfp_filter)
+init_queue(bpf_filter::String="")::Channel{Packet} = init_queue(get_dev(), bpf_filter)
