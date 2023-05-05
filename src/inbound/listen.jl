@@ -47,7 +47,7 @@ function init_receiver(bfp_filter::Union{String, Symbol})::Channel{Packet}
     return init_queue(bfp_filter)
 end
 
-function try_recover(packet::Packet, integrities::Vector{Tuple{Int, UInt8}}, methods::Vector{covert_method})::Int
+function try_recover(packet::Packet, integrities::Vector{Tuple{Int, UInt8}}, methods::Vector{covert_method})::Tuple{Int64, Int64}
     for (i, method) ∈ enumerate(methods)
         if couldContainMethod(packet, method)
             data = bitstring(decode(method, packet))
@@ -57,7 +57,7 @@ function try_recover(packet::Packet, integrities::Vector{Tuple{Int, UInt8}}, met
                 for (length, integrity) ∈ reverse(integrities)[1:min(end, 4)] # Go back max 4 integrities, to be safe
                     if length % 0x10 == transmission_length - 1 # The -1 is an artefact of the pointer on the sender side
                         ARP_Beacon(integrity ⊻ offset, IPv4Addr(get_local_ip()))
-                        return i
+                        return i, length
                     end
                 end
             end
@@ -119,8 +119,10 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
         packet = take!(queue)
         type, kwargs = process_packet(current_method, packet)
         if recovery && type != :method_change
-            index = try_recover(packet, integrities, methods)
+            (index, length) = try_recover(packet, integrities, methods)
             if index != -1
+                chunk = ""
+                data = data[1:length]
                 @info "Recovering to new method" method=methods[index].name
                 current_method = methods[index]
                 last_interval_point = current_point
