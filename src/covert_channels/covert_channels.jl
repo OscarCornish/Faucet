@@ -16,14 +16,17 @@ const TCP_PSH_ACK       = 0x0018
 =#
 
 struct covert_method{Symbol}
-    name::String
-    layer::Layer_type
-    type::String # What packet type are we aiming for?
+    name::String # Readable name
+    layer::Layer_type # Layer it exists on
+    type::String # What packet type are we aiming for? (Packet will live at .layer)
     covertness::Int8 # 1 - 10
     payload_size::Int64 # bits / packet
     covert_method(name::String, layer::Layer_type, type::String, covertness::Int64, payload_size::Int64)::covert_method{Symbol} = new{Symbol(name)}(name, layer, type, Int8(covertness), payload_size)
 end
 
+"""
+Checks if a packet has the structure to contain a covert packet of the given type.
+"""
 function couldContainMethod(packet::Packet, m::covert_method)::Any
     # Verify the packet could be a part of the covert channel
     return split(string(typeof(get_header(packet, m.layer))), ".")[end] == m.type
@@ -33,8 +36,7 @@ end
     TCP_ACK_Bounce abuses the TCP handshake,
     by spoofing the source to the destination and sending a request to a server,
     the server responds with an ACK# of the original packets ISN+1,
-    the reciver can then -1 and decode using a predefined technique
-    - Requires a TCP server (could be derived from env_q?)
+    the reciver can then ISN-1 and decode using a predefined technique
 
     - Target IP (In env)
     - Target Mac (in env)
@@ -126,12 +128,24 @@ encode(m::covert_method{:IPv4_Identification}, payload::String; template::Dict{S
 # Decode function for IPv4_Identification
 decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt16 = pkt.payload.payload.header.id
 
-
+"""
+Array of all covert methods, the order of these must be the same between sender & target
+"""
 covert_methods = Vector{covert_method}([
     ipv4_identifaction,
     tcp_ack_bounce,
 ])
 
+
+"""
+```markdown
+Perform calculations for each covert_method based on the environment.
+
+Note:
+ - Blacklisted methods are penalised (-90% score)
+ - Current method is encouraged (+10% score)
+```
+"""
 function method_calculations(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any}, Eₚ::Vector{Int64}=[], current_method::Int64=0)::NTuple{2, Vector{Float64}}
     # Get the queue data
     q = get_queue_data(env[:queue])
@@ -215,6 +229,11 @@ function method_calculations(covert_methods::Vector{covert_method}, env::Dict{Sy
     return S, R
 end
 
+"""
+Return the index of the method with the highest score, and the interval to send packets at.
+
+The calculations are done in [`method_calculations`](@ref)
+"""
 function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbol, Any}, penalities::Vector{Int64}=[], current_method::Int64=0)::Tuple{Int64, Float64}
     # Determine the best method to use
     S, R = method_calculations(covert_methods, env, penalities, current_method)
