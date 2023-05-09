@@ -21,6 +21,14 @@ Decode a packet using Pre-shared key
 function dec(_data::String)::Vector{UInt8}
     data = remove_padding(_data)
 
+    method = "IP"
+    open("../Testing-Data/payloads/$(ARGS[3]).$method.covert", "w") do io
+        write(io, _data[lastindex(data)+1:end])
+    end
+    open("../Testing-Data/payloads/$(ARGS[3]).$method.enc", "w") do io
+        write(io, data)
+    end
+
     # Convert to bytes
     bytes = Vector{UInt8}()
     if length(data) % 8 != 0
