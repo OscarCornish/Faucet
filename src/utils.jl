@@ -121,3 +121,4 @@ function get_ip_from_dev(dev::String)::String
     output = readchomp(`ip a show dev $dev`)
     return match(ip_from_dev_regex, output)[:ip]
 end
+        

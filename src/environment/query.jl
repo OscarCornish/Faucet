@@ -46,11 +46,11 @@ function get_header(p::Packet, l::Layer_type)::Union{Header, Missing}
 end
 
 """
-    get_queue_data(q::Channel{Packet})::Vector{Packet}
+    get_queue_data(q::CircularChannel{Packet})::Vector{Packet}
 
-Converts the queue to a static vector of packets
+Converts the queue to a static vector of packets (Implicitly)
 """
-get_queue_data(q::Channel{Packet})::Vector{Packet} = q.data
+get_queue_data(q::CircularChannel{Packet})::Vector{Packet} = q
 
 """
     get_layer_stats(packets, layer)::Dict{String, Int64}
@@ -87,11 +87,11 @@ function get_layer_stats(v::Vector{Packet}, l::Layer_type)::Dict{String, Int64}
 end
 
 """
-    get_layer_stats(q::Channel{Packet}, l::Layer_type)::Dict{String, Int64}
+    get_layer_stats(q::CircularChannel{Packet}, l::Layer_type)::Dict{String, Int64}
 
 Converts the queue to a static vector of packets pre-processing
 """
-get_layer_stats(q::Channel{Packet}, l::Layer_type)::Dict{String, Int64} = get_layer_stats(get_queue_data(q), l)
+get_layer_stats(q::CircularChannel{Packet}, l::Layer_type)::Dict{String, Int64} = get_layer_stats(get_queue_data(q), l)
 
 """
     get_layer2index(tree_root::Node)::Dict{String, Int64}
@@ -224,7 +224,7 @@ function query_queue(q::Vector{Packet}, arguments::Vector{Dict{String, Dict{Symb
     end
     return query
 end
-query_queue(q::Channel{Packet}, args::Vector{Dict{String, Dict{Symbol, Any}}})::Vector{Vector{Header}} = query_queue(get_queue_data(q), args)
+query_queue(q::CircularChannel{Packet}, args::Vector{Dict{String, Dict{Symbol, Any}}})::Vector{Vector{Header}} = query_queue(get_queue_data(q), args)
 
 """
     get_tcp_server(queue)::(MAC, IP, Port)
@@ -285,9 +285,9 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
     port = 0x0050
     return (mac, ip, port)
 end
-get_tcp_server(q::Channel{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, NTuple{3, Nothing}} = get_tcp_server(get_queue_data(q))
+get_tcp_server(q::CircularChannel{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32, UInt16}, NTuple{3, Nothing}} = get_tcp_server(get_queue_data(q))
 
-get_local_host_count(q::Channel{Packet}, local_address::IPv4Addr, subnet_mask::Int=24)::Int64 = get_local_host_count(get_queue_data(q), local_address, subnet_mask)
+get_local_host_count(q::CircularChannel{Packet}, local_address::IPv4Addr, subnet_mask::Int=24)::Int64 = get_local_host_count(get_queue_data(q), local_address, subnet_mask)
 function get_local_host_count(q::Vector{Packet}, local_address::IPv4Addr, subnet_mask::Int=24)::Int64
     # CIDR notation is number of bits that denote the network, the rest are host bits
     local_address_mask = typemax(UInt32) << (32 - subnet_mask)
@@ -351,4 +351,4 @@ function get_local_net_host(q::Vector{Packet}, local_address::IPv4Addr, blacklis
     # Return the most active local host
     return collect(keys(hosts))[findmax(collect(values(hosts)))[2]]
 end
-get_local_net_host(q::Channel{Packet}, local_address::IPv4Addr, blacklist::Vector{UInt8}=[], subnet_mask::Int=24)::UInt8 = get_local_net_host(get_queue_data(q), local_address, blacklist, subnet_mask)
+get_local_net_host(q::CircularChannel{Packet}, local_address::IPv4Addr, blacklist::Vector{UInt8}=[], subnet_mask::Int=24)::UInt8 = get_local_net_host(get_queue_data(q), local_address, blacklist, subnet_mask)

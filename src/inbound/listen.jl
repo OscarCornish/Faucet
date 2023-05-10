@@ -21,13 +21,13 @@ Decode a packet using Pre-shared key
 function dec(_data::String)::Vector{UInt8}
     data = remove_padding(_data)
 
-    method = "IP"
-    open("../Testing-Data/payloads/$(ARGS[3]).$method.covert", "w") do io
-        write(io, _data[lastindex(data)+1:end])
-    end
-    open("../Testing-Data/payloads/$(ARGS[3]).$method.enc", "w") do io
-        write(io, data)
-    end
+    # method = "IP"
+    # open("../Testing-Data/payloads/$(ARGS[3]).$method.covert", "w") do io
+    #     write(io, _data[lastindex(data)+1:end])
+    # end
+    # open("../Testing-Data/payloads/$(ARGS[3]).$method.enc", "w") do io
+    #     write(io, data)
+    # end
 
     # Convert to bytes
     bytes = Vector{UInt8}()
@@ -65,7 +65,7 @@ Initialise our receiver:
 - `:all` => Filter to all traffic
 ```
 """
-function init_receiver(bpf_filter::Union{String, Symbol})::Channel{Packet}
+function init_receiver(bpf_filter::Union{String, Symbol})::CircularChannel{Packet}
     if bpf_filter == :local
         bpf_filter = local_bound_traffic()
     end
@@ -135,7 +135,7 @@ end
 """
 Await a covert communication, and return the decrypted data
 """
-function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{UInt8}
+function listen(queue::CircularChannel{Packet}, methods::Vector{covert_method})::Vector{UInt8}
     local_ip = get_local_ip()
     # previous is essentially a revert, if a commited chunks integrity fails, we can revert to the previous state
     data, previous, chunk = "", "", ""
