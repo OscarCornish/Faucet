@@ -208,11 +208,11 @@ arguments = [
     }
 ]
 ```
-```markdown
-will return all headers for packets that either have:
+!!! note
+    will return all headers for packets that either have:
     (tcp header with a source port of `12049` *AND* destination port of `80`) *OR*
     (ipv4 header with an ihl of `5` *OR* `6`)
-```
+
 """
 function query_queue(q::Vector{Packet}, arguments::Vector{Dict{String, Dict{Symbol, Any}}})::Vector{Vector{Header}}
     query = Vector{Vector{Header}}()

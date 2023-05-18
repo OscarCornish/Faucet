@@ -21,14 +21,6 @@ Decode a packet using Pre-shared key
 function dec(_data::String)::Vector{UInt8}
     data = remove_padding(_data)
 
-    # method = "IP"
-    # open("../Testing-Data/payloads/$(ARGS[3]).$method.covert", "w") do io
-    #     write(io, _data[lastindex(data)+1:end])
-    # end
-    # open("../Testing-Data/payloads/$(ARGS[3]).$method.enc", "w") do io
-    #     write(io, data)
-    # end
-
     # Convert to bytes
     bytes = Vector{UInt8}()
     if length(data) % 8 != 0
@@ -76,7 +68,7 @@ function init_receiver(bpf_filter::Union{String, Symbol})::CircularChannel{Packe
     if typeof(bpf_filter) != String
         throw(ArgumentError("bpf_filter must be a string, :local, or :all"))
     end
-    return init_queue(bpf_filter)
+    return init_queue(;bpf_filter_string=bpf_filter)
 end
 
 """

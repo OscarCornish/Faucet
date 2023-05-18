@@ -2,6 +2,19 @@
 # Heavily inspired by:
 # https://github.com/JuliaCollections/DataStructures.jl/blob/master/src/circular_buffer.jl
 
+"""
+    CircularChannel{T}(sz::Int) where T
+```
+A thread-safe channel, that will overwrite the oldest data when full
+Implements:
+    - put!(cc::CircularChannel{T}, data::T)
+    - take!(cc::CircularChannel{T})::T
+    - length(cc::CircularChannel{T})::Int
+    - size(cc::CircularChannel{T})::Tuple{Int}
+    - isempty(cc::CircularChannel{T})::Bool
+    - convert(::Vector{T}, cc::CircularChannel{T})::Vector{T}
+```
+"""
 mutable struct CircularChannel{T} <: AbstractVector{T}
     capacity::Int
     @atomic first::Int

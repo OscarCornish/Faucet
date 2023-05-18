@@ -30,7 +30,7 @@ end
 
 module CovertChannels
 
-    using .Main: Layer_type, IPv4, Network_Type, TCP, Transport_Type, CircularChannel
+    using .Main: Layer_type, IPv4, Network_Type, TCP, Transport_Type, CircularChannel, MINIMUM_CHANNEL_SIZE
     using ..Environment: Packet, get_tcp_server, get_queue_data, get_layer_stats, get_header, get_local_host_count
 
     export covert_methods

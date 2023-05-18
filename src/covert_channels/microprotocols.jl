@@ -34,8 +34,6 @@
 
 =#
 
-using .Main: MINIMUM_CHANNEL_SIZE, target
-
 const SENTINEL = parse(UInt16, "1"^(MINIMUM_CHANNEL_SIZE), base=2)
 const DISCARD_CHUNK = SENTINEL - 1
 

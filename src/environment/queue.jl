@@ -4,8 +4,6 @@
 
 =#
 
-using .Main: ENVIRONMENT_QUEUE_SIZE
-
 """
     errbuff_to_error(errbuf::Vector{UInt8})
 
@@ -193,7 +191,7 @@ get_local_ip() = get_local_ip(get_dev())
 
 Given the device to open the queue on, return a CircularChannel{Packet} which will be filled with packets
 """
-function init_queue(device::String, bpf_filter_string::String="")::CircularChannel{Packet}
+function init_queue(device::String=get_dev(); bpf_filter_string::String="")::CircularChannel{Packet}
     queue = CircularChannel{Packet}(5)
     handle = pcap_open_live(device, -1, true)
     # Set the filter if one is supplied
@@ -215,4 +213,3 @@ function init_queue(device::String, bpf_filter_string::String="")::CircularChann
     errormonitor(Base.Threads.@spawn pcap_loop(handle, -1, callback, C_NULL))
     return queue
 end
-init_queue(bpf_filter::String="")::CircularChannel{Packet} = init_queue(get_dev(), bpf_filter)

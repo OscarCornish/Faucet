@@ -311,9 +311,6 @@ function send_packet(m::covert_method, net_env::Dict{Symbol, Any}, payload::Stri
 end
 
 function send_sentinel_packet(m::covert_method, net_env::Dict{Symbol, Any}, template::Dict{Symbol, Any})::Nothing
-    open("../Testing-Data/timings/$(ARGS[3]).timings", "a") do io
-        write(io, "SENTINEL:$(m.name):$(time_ns())\n")
-    end
     send_packet(craft_packet(;encode(m, craft_sentinel_payload(m.payload_size); template)...), net_env)
 end
 
@@ -525,9 +522,6 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                 @debug "Performing regular interval integrity check" interval=integrity_interval
             elseif method_index != current_method_index
                 @debug "Switched method, performing integrity check" method=method.name interval=time_interval
-                # open("../Testing-Data/timings/$(ARGS[3]).timings", "a") do io
-                #     write(io, "SWITCH:$(method.name):$packet_count:$(time_ns())\n")
-                # end
             else
                 @debug "Final integrity check"
             end
@@ -544,9 +538,6 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
             else # Failure, resend chunk
                 # Increment failures
                 protocol_failures += 1
-                # open("../Testing-Data/timings/$(ARGS[3]).timings", "a") do io
-	            #     write(io, "FAIL:$(method.name):$(time_ns())\n")
-                # end
                 # If we have failed too many times, blacklist the protocol
                 if protocol_failures == max_failures
                     push!(protocol_blacklist, (method_index, packet_count + penalty_size))
@@ -554,9 +545,6 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                     protocol_failures = 0
                     # Enter recovery mode
                     recovery_mode = true
-                    # open("../Testing-Data/timing/$(ARGS[3]).timings", "a") do io
-                    # 	write(io, "BLACKLIST:$(method.name):$(time_ns())\n")
-                    # end
             	end
                 # Reset pointer to beginning of chunk
                 pointer = chunk_pointer
@@ -602,9 +590,6 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         # Sleep for the time interval
         sleep(time_interval)
     end
-    # open("../Testing-Data/timings/$(ARGS[3]).timings", "a") do io
-    #     write(io, "END:$(packet_count):$(time_ns())\n")
-    # end
     # Send sentinel packet to end communication
     send_sentinel_packet(method, net_env, method_kwargs)
     @debug "Endded communication via SENTINEL" via=method.name
