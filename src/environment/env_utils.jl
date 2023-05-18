@@ -51,6 +51,7 @@ function sendto(sockfd::Integer, packet::Vector{UInt8}, interface_id::Integer)::
     # Create sockaddr_ll
     sockaddr_ll = Sockaddr_ll(sll_ifindex=interface_id, sll_addr=destination_addr)
     # Send packet
+    @debug "Sending packet" time=time()
     bytes = ccall(:sendto, Cint, (Cint, Ptr{UInt8}, Csize_t, Cint, Ptr{Sockaddr_ll}, Cint), sockfd, packet, length(packet), 0, Ref(sockaddr_ll), sizeof(sockaddr_ll))
     if bytes == -1
         @error "Failed to send packet" errno=Base.Libc.errno()
@@ -99,6 +100,8 @@ Await an arp beacon from the source address, return nothing if timeout is reache
 function await_arp_beacon(ip::IPv4Addr, target::UInt8, timeout::Int64=5)
     # Get a fresh socket to listen on
     socket = get_socket(AF_PACKET, SOCK_RAW, ETH_P_ALL)
+    heard = Vector{UInt8}()
+    @info "Started listening @" time() timeout
     start = time_ns()
     while (time_ns() - start) < timeout * 1e9
         # Read a packet
@@ -118,5 +121,6 @@ function await_arp_beacon(ip::IPv4Addr, target::UInt8, timeout::Int64=5)
             end
         end
     end
+    @warn "Timed out waiting for ARP beacon" heard
     return false
 end

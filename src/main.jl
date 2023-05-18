@@ -16,7 +16,7 @@ include("target.jl")
 
 module Environment
 
-    using .Main: Layer_type, get_ip_from_dev, IPv4Addr, _to_bytes, CircularChannel
+    using .Main: Layer_type, get_ip_from_dev, IPv4Addr, _to_bytes, CircularChannel, ENVIRONMENT_QUEUE_SIZE
     
     export init_queue
 

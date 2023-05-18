@@ -168,7 +168,6 @@ function get_callback(queue)::Function
         cap_hdr = unsafe_load(header)
         pkt = Packet(cap_hdr, packet_from_pointer(packet, cap_hdr.capture_length))
         put!(queue, pkt)
-        sleep(0.001)
         return nothing
     end
     return callback
@@ -192,7 +191,7 @@ get_local_ip() = get_local_ip(get_dev())
 Given the device to open the queue on, return a CircularChannel{Packet} which will be filled with packets
 """
 function init_queue(device::String=get_dev(); bpf_filter_string::String="")::CircularChannel{Packet}
-    queue = CircularChannel{Packet}(5)
+    queue = CircularChannel{Packet}(ENVIRONMENT_QUEUE_SIZE)
     handle = pcap_open_live(device, -1, true)
     # Set the filter if one is supplied
     if bpf_filter_string != ""

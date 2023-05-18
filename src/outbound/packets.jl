@@ -270,6 +270,8 @@ end
 Send out a beacon with the given payload. The payload is a tuple of 6 bytes.
 """
 function ARP_Beacon(payload::UInt8, source_ip::IPv4Addr, send_socket::IOStream=get_socket(AF_PACKET, SOCK_RAW, IPPROTO_RAW))::Nothing
+    @info "ARP ORGINAL TIME " time() sleep=5
+    sleep(5) # Make sure the receiver is ready to listen
     src_mac = mac_from_ip(source_ip, :local) # This function is used by the receiver, so the src addr is the target addr
     src_ip = _to_bytes(source_ip.host)
     dst_ip = [src_ip[1:3]...; payload]
@@ -292,7 +294,8 @@ function ARP_Beacon(payload::UInt8, source_ip::IPv4Addr, send_socket::IOStream=g
         )
     )
     # Send packet
-    sendto(send_socket, packet, iface)
+    x = sendto(send_socket, packet, iface)
+    @assert x == length(packet) "Sent $x bytes, expected $(length(packet))"
     return nothing
 end
 ARP_Beacon(payload::NTuple{6, UInt8}, source_ip::String) = ARP_Beacon(payload, IPv4Addr(source_ip))
@@ -409,7 +412,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     # Number of packets sent
     packet_count = 0
     # Time to wait for a (challenge) response from the target
-    check_timeout = 5
+    check_timeout = 10
     # The padding we send to the target with our final payload will be part of the integrity check, so store it
     final_padding = ""
     # When we have sent the final payload we go back to perform an integrity check, but we don't want to send packets after so we set this flag
@@ -424,7 +427,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     
     # Give the environment queue some time to populate, so sleep a bit
     #  If we don't do this then our chosen method will be volatile...  
-    time_interval = 5
+    time_interval = 10
     @warn "Inital time interval " time_interval
     sleep(time_interval)
     
@@ -506,6 +509,10 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
         if method_index != current_method_index || packet_count % integrity_interval == 0
             # This label is jumped to later (for our final integrity check)
             @label verify
+
+            # Don't send back to back packets
+            sleep(time_interval)
+
             # Get the current integrity, if we have used final padding, append it
             integrity = integrity_check(bits[chunk_pointer:pointer-1] * final_padding)
             # Get a known host for the integrity check
@@ -522,6 +529,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                 @debug "Performing regular interval integrity check" interval=integrity_interval
             elseif method_index != current_method_index
                 @debug "Switched method, performing integrity check" method=method.name interval=time_interval
+                protocol_failures = 0
             else
                 @debug "Final integrity check"
             end

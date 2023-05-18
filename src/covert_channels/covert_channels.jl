@@ -50,7 +50,7 @@ tcp_ack_bounce::covert_method{:TCP_ACK_Bounce} = covert_method(
     "TCP_ACK_Bounce",
     Layer_type(4), # transport
     "TCP_header",
-    5,
+    3,
     32 # 4 bytes / packet
 )
 
