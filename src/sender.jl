@@ -19,4 +19,5 @@ send_covert_payload(covert_payload, covert_methods, net_env)
 
 @info "Finished sending covert payload"
 
+sleep(10)
 exit(0)

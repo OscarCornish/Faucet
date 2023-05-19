@@ -132,8 +132,8 @@ decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt16 = pkt.payload
 Array of all covert methods, the order of these must be the same between sender & target
 """
 covert_methods = Vector{covert_method}([
-    ipv4_identifaction,
     tcp_ack_bounce,
+    ipv4_identifaction,
 ])
 
 
@@ -220,7 +220,12 @@ function method_calculations(covert_methods::Vector{covert_method}, env::Dict{Sy
     # Eₚ (arg) : Environment penalty : Penalty for failing to work previously
     for i ∈ Eₚ
         S[i] *= 0.1 # 10% of original score
+        if i == 1
+            S[i] *= 0.1 # 1% of original score
+        end
     end
+
+    S[1] *= 10
 
     current_method != 0 && (S[current_method] *= 1.1) # Encourage current method (+10%)
 
@@ -249,5 +254,5 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
     # @debug "Determined covert method" covert_methods[i].name score=Sᵢ rate=Rᵢ
 
     # Sort scores by second value in pair (score) and return highest
-    return i, Rᵢ
+    return i, 1#Rᵢ
 end

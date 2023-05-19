@@ -12,4 +12,5 @@ data = listen(queue, covert_methods)
 
 @info "Data recieved" covert_payload=String(data)
 
+sleep(10)
 exit(0)

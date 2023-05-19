@@ -79,11 +79,13 @@ function try_recover(packet::Packet, integrities::Vector{Tuple{Int, UInt8}}, met
     for (i, method) ∈ enumerate(methods)
         if couldContainMethod(packet, method)
             data = bitstring(decode(method, packet))
+            @debug "Method $(method.name) yields" data
             if length(data) >= MINIMUM_CHANNEL_SIZE + 12 && data[1:MINIMUM_CHANNEL_SIZE] == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
                 offset = parse(UInt8, data[MINIMUM_CHANNEL_SIZE+1:MINIMUM_CHANNEL_SIZE+8], base=2)
                 transmission_length = parse(Int, data[MINIMUM_CHANNEL_SIZE+9:MINIMUM_CHANNEL_SIZE+12], base=2)
                 for (len, integrity) ∈ reverse(integrities)[1:min(end, 4)] # Go back max 4 integrities, to be safe
-                    if len % 0x10 == transmission_length - 1 # The -1 is an artefact of the pointer on the sender side
+                    @debug "Checking integrity of recovery packet" len=len integrity=integrity
+                    if len % 0x10 == transmission_length # The -1 is an artefact of the pointer on the sender side
                         ARP_Beacon(integrity ⊻ offset, IPv4Addr(get_local_ip()))
                         return i, len
                     end
@@ -140,8 +142,8 @@ function listen(queue::CircularChannel{Packet}, methods::Vector{covert_method}):
 
     # Recovery variables
     # (transimission_length, integrity)
-    integrities = Vector{Tuple{Int, UInt8}}()
-    last_interval_size = Tuple{Float64, Int64}[(0.0, 0)]
+    integrities = Vector{Tuple{Int, UInt8}}([(0, 0x0)])
+    last_interval_size = Tuple{Float64, Int64}[(20.0, 5)]
     last_interval_point = Tuple{Float64, Int64}[(0.0, 0)]
 
     # Await sentinel
@@ -168,6 +170,8 @@ function listen(queue::CircularChannel{Packet}, methods::Vector{covert_method}):
                 data = data[1:len]
                 @info "Recovering to new method" method=methods[index].name
                 
+                # Incase we go straight into recovery mode
+                sentinel_recieved = true
                 # Update current method
                 current_method = methods[index]
                 # Change time of last interval, but don't update the size (recovery)
@@ -194,6 +198,8 @@ function listen(queue::CircularChannel{Packet}, methods::Vector{covert_method}):
             integrity = integrity_check(chunk)
 
             # Beacon out integrity of chunk ⊻'d against the offset we received
+            @debug "Sleeping before arp... (5)" integrity=integrity offset=integrity_offset integrity⊻integrity_offset
+            sleep(5)
             ARP_Beacon(integrity ⊻ integrity_offset, IPv4Addr(local_ip))
             
             # Update current method
