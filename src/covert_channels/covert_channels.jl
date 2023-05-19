@@ -132,8 +132,8 @@ decode(::covert_method{:IPv4_Identification}, pkt::Packet)::UInt16 = pkt.payload
 Array of all covert methods, the order of these must be the same between sender & target
 """
 covert_methods = Vector{covert_method}([
-    ipv4_identifaction,
     tcp_ack_bounce,
+    ipv4_identifaction,
 ])
 
 
