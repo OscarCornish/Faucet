@@ -274,7 +274,7 @@ function ARP_Beacon(payload::UInt8, source_ip::IPv4Addr, send_socket::IOStream=g
     src_ip = _to_bytes(source_ip.host)
     dst_ip = [src_ip[1:3]...; payload]
     iface = get_dev_from_ip(source_ip)
-    @debug "Sending ARP beacon" encoded_byte=payload
+    @debug "Sending ARP beacon" encoded_byte=payload time()
 
     packet = craft_packet(
         payload = Vector{UInt8}(),
@@ -292,7 +292,8 @@ function ARP_Beacon(payload::UInt8, source_ip::IPv4Addr, send_socket::IOStream=g
         )
     )
     # Send packet
-    sendto(send_socket, packet, iface)
+    x = sendto(send_socket, packet, iface)
+    @assert x == length(packet) "Sent $x bytes, expected $(length(packet))"
     return nothing
 end
 ARP_Beacon(payload::NTuple{6, UInt8}, source_ip::String) = ARP_Beacon(payload, IPv4Addr(source_ip))
@@ -342,7 +343,8 @@ function pad_transmission(raw::String, method::Symbol=PADDING_METHOD)::String
     if method == :short
         return raw * "1"
     elseif method == :covert
-        return raw * lstrip(bitstring(Int64(length(raw) / 8)), '0')
+        # We know our encrypted payload is a multiple of 128 bits, so divide by 128 to get the number of "segments"
+        return raw * lstrip(bitstring(Int64(length(raw) / 128)), '0')
     else
         error("Unknown padding method $method")
     end
@@ -408,11 +410,13 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     # Number of packets sent
     packet_count = 0
     # Time to wait for a (challenge) response from the target
-    check_timeout = 5
+    check_timeout = 10
     # The padding we send to the target with our final payload will be part of the integrity check, so store it
     final_padding = ""
     # When we have sent the final payload we go back to perform an integrity check, but we don't want to send packets after so we set this flag
     finished = false
+    # Should verify at next oppurtunity?
+    should_verify = false
 
     # Initialise the payload:
     payload = enc(raw_payload)
@@ -423,7 +427,7 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     
     # Give the environment queue some time to populate, so sleep a bit
     #  If we don't do this then our chosen method will be volatile...  
-    time_interval = 5
+    time_interval = 10
     @warn "Inital time interval " time_interval
     sleep(time_interval)
     
@@ -433,7 +437,9 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
     # At 0 packets we know what the payload is (0x00)
     last_verification_packet_count = packet_count
     last_verification_time = time()
-    last_integrity = (0, 0x00) # (length (in s), integrity value)
+    last_integrity = (0, 0x00) 
+    next_integrity = (0, 0x00)
+    # (length (in s), integrity value)
     # Time interval, packet interval
     #  to start, we don't want to go straight into recovery mode, but we do want the possibility - so just add a delay
     #  50 seconds, 6 packets
@@ -480,15 +486,20 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                 @debug "Attempting to recover with method" method=methods[i].name
                 
                 # Allow a larger timeout here, as the recovery process is a bit longer.
-                if await_arp_beacon(net_env[:dest_ip], known_host, check_timeout*2)
+                if await_arp_beacon(net_env[:dest_ip], known_host, check_timeout*4)
                     # Success, we have recovered, so update the variables
+                    current_method_index = i
+                    pointer = last_integrity[1] + 1
+                    chunk_pointer = pointer
                     recovery_timeouts = (time() - last_verification_time, packet_count - last_verification_packet_count)
                     last_verification_time = time()
                     last_verification_packet_count = packet_count
+                    should_verify = true
+                    sleep(R[current_method_index])
                     break # Don't need to try any more methods
                 end
             end
-            if isempty(idxs) # If we exhausted all methods, end communication
+            if last_verification_packet_count != packet_count && isempty(idxs) # If we exhausted all methods, end communication
                 error("Failed to recover with any method")
             end
             @info "Recovered with method" method=methods[current_method_index].name
@@ -499,12 +510,21 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
 
         # Determine method to use, strip the penalties from the protocol blacklist, it doesn't need them
         # Give it the current method to discourage it from switching (using a 10% bonus to the score)
-        method_index, time_interval = determine_method(methods, net_env, [x[1] for x ∈ protocol_blacklist], current_method_index)
+        if protocol_failures == 0
+            (method_index, time_interval) = determine_method(methods, net_env, [x[1] for x ∈ protocol_blacklist], current_method_index)
+        else
+            method_index = current_method_index
+        end
         
         # If we have changed method, or are due an integrity check
-        if method_index != current_method_index || packet_count % integrity_interval == 0
+        if method_index != current_method_index || packet_count % integrity_interval == 0 || should_verify
+
             # This label is jumped to later (for our final integrity check)
             @label verify
+
+            # Don't send back to back packets
+            sleep(time_interval)
+
             # Get the current integrity, if we have used final padding, append it
             integrity = integrity_check(bits[chunk_pointer:pointer-1] * final_padding)
             # Get a known host for the integrity check
@@ -521,9 +541,12 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                 @debug "Performing regular interval integrity check" interval=integrity_interval
             elseif method_index != current_method_index
                 @debug "Switched method, performing integrity check" method=method.name interval=time_interval
-            else
+                protocol_failures = 0
+            elseif !should_verify
                 @debug "Final integrity check"
             end
+
+            should_verify = false
 
             # Await the response
             if await_arp_beacon(net_env[:dest_ip], known_host, check_timeout) # Success
@@ -533,8 +556,10 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                 # reset chunk pointer
                 chunk_pointer = pointer
                 # update last verified integrity (+ length)
-                last_integrity = (chunk_pointer, integrity)
+                last_integrity = next_integrity
+                next_integrity = (chunk_pointer-1, integrity)
             else # Failure, resend chunk
+                @warn "Failed integrity check" method=method.name integrity known_host integrity ⊻ known_host
                 # Increment failures
                 protocol_failures += 1
                 # If we have failed too many times, blacklist the protocol
@@ -544,10 +569,9 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
                     protocol_failures = 0
                     # Enter recovery mode
                     recovery_mode = true
-                end
+            	end
                 # Reset pointer to beginning of chunk
                 pointer = chunk_pointer
-                @warn "Failed integrity check" method=method.name integrity known_host integrity ⊻ known_host
                 # Tell the target to discard the chunk, and send some data with it too
                 pointer += send_discard_chunk_packet(method, bits, pointer, net_env, method_kwargs)
                 # We aren't finished anymore (if we were before)

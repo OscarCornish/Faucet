@@ -74,7 +74,7 @@ get_dev_from_ip(ip::IPv4Addr)::String = get_dev_from_ip(string(ip))
 """
 Initialise an environment "context" for the given target
 """
-function init_environment(target::Target, q::Channel{Packet}, covertness::Int=5)::Dict{Symbol, Any}
+function init_environment(target::Target, q::CircularChannel{Packet}, covertness::Int=5)::Dict{Symbol, Any}
     @assert isa(target.ip, IPv4Addr)
     @assert 1 ≤ covertness ≤ 10
 

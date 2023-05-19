@@ -93,8 +93,8 @@ function remove_padding(payload::String, method::Symbol=PADDING_METHOD)::String
         return rstrip(payload, '0')[1:end-1]
     elseif method == :covert
         for i = length(payload):-1:1
-            if i % 8 == 0
-                bitlen = lstrip(bitstring(Int64(i/8)), '0')
+            if i % 128 == 0
+                bitlen = lstrip(bitstring(Int64(i/128)), '0')
                 if length(payload) - i >= length(bitlen)
                     if payload[i+1:i+length(bitlen)] == bitlen
                         payload = payload[1:i]
@@ -121,3 +121,4 @@ function get_ip_from_dev(dev::String)::String
     output = readchomp(`ip a show dev $dev`)
     return match(ip_from_dev_regex, output)[:ip]
 end
+        

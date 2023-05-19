@@ -57,7 +57,7 @@ Initialise our receiver:
 - `:all` => Filter to all traffic
 ```
 """
-function init_receiver(bpf_filter::Union{String, Symbol})::Channel{Packet}
+function init_receiver(bpf_filter::Union{String, Symbol})::CircularChannel{Packet}
     if bpf_filter == :local
         bpf_filter = local_bound_traffic()
     end
@@ -68,7 +68,7 @@ function init_receiver(bpf_filter::Union{String, Symbol})::Channel{Packet}
     if typeof(bpf_filter) != String
         throw(ArgumentError("bpf_filter must be a string, :local, or :all"))
     end
-    return init_queue(bpf_filter)
+    return init_queue(;bpf_filter_string=bpf_filter)
 end
 
 """
@@ -83,7 +83,8 @@ function try_recover(packet::Packet, integrities::Vector{Tuple{Int, UInt8}}, met
                 offset = parse(UInt8, data[MINIMUM_CHANNEL_SIZE+1:MINIMUM_CHANNEL_SIZE+8], base=2)
                 transmission_length = parse(Int, data[MINIMUM_CHANNEL_SIZE+9:MINIMUM_CHANNEL_SIZE+12], base=2)
                 for (len, integrity) ∈ reverse(integrities)[1:min(end, 4)] # Go back max 4 integrities, to be safe
-                    if len % 0x10 == transmission_length - 1 # The -1 is an artefact of the pointer on the sender side
+                    @debug "Checking integrity of recovery packet" len=len integrity=integrity
+                    if len % 0x10 == transmission_length # The -1 is an artefact of the pointer on the sender side
                         ARP_Beacon(integrity ⊻ offset, IPv4Addr(get_local_ip()))
                         return i, len
                     end
@@ -127,7 +128,7 @@ end
 """
 Await a covert communication, and return the decrypted data
 """
-function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{UInt8}
+function listen(queue::CircularChannel{Packet}, methods::Vector{covert_method})::Vector{UInt8}
     local_ip = get_local_ip()
     # previous is essentially a revert, if a commited chunks integrity fails, we can revert to the previous state
     data, previous, chunk = "", "", ""
@@ -140,8 +141,8 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
 
     # Recovery variables
     # (transimission_length, integrity)
-    integrities = Vector{Tuple{Int, UInt8}}()
-    last_interval_size = Tuple{Float64, Int64}[(0.0, 0)]
+    integrities = Vector{Tuple{Int, UInt8}}([(0, 0x0)])
+    last_interval_size = Tuple{Float64, Int64}[(20.0, 5)]
     last_interval_point = Tuple{Float64, Int64}[(0.0, 0)]
 
     # Await sentinel
@@ -168,6 +169,8 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
                 data = data[1:len]
                 @info "Recovering to new method" method=methods[index].name
                 
+                # Incase we go straight into recovery mode
+                sentinel_recieved = true
                 # Update current method
                 current_method = methods[index]
                 # Change time of last interval, but don't update the size (recovery)
@@ -194,6 +197,8 @@ function listen(queue::Channel{Packet}, methods::Vector{covert_method})::Vector{
             integrity = integrity_check(chunk)
 
             # Beacon out integrity of chunk ⊻'d against the offset we received
+            @debug "Sleeping before arp... (5)" integrity=integrity offset=integrity_offset integrity⊻integrity_offset
+            sleep(5)
             ARP_Beacon(integrity ⊻ integrity_offset, IPv4Addr(local_ip))
             
             # Update current method

@@ -96,13 +96,12 @@ const ARP_DEST_SLICE      = 39:42
 """
 Await an arp beacon from the source address, return nothing if timeout is reached, otherwise return the data
 """
-await_arp_beacon(source_ip::String, timeout::Int)::Union{Nothing, UInt8} = await_arp_beacon(IPv4Addr(source_ip), timeout)
 function await_arp_beacon(ip::IPv4Addr, target::UInt8, timeout::Int64=5)
     # Get a fresh socket to listen on
     socket = get_socket(AF_PACKET, SOCK_RAW, ETH_P_ALL)
-    start = time_ns()
-    # Log all heard beacons, for debugging
     heard = Vector{UInt8}()
+    @debug "Started listening @" time() timeout
+    start = time_ns()
     while (time_ns() - start) < timeout * 1e9
         # Read a packet
         raw = read(socket)
@@ -121,6 +120,6 @@ function await_arp_beacon(ip::IPv4Addr, target::UInt8, timeout::Int64=5)
             end
         end
     end
-    @warn "$target not found" heard
+    @warn "Timed out waiting for ARP beacon" heard_ips="10.20.30." .* string.(Int.(heard))
     return false
 end

@@ -50,7 +50,7 @@ tcp_ack_bounce::covert_method{:TCP_ACK_Bounce} = covert_method(
     "TCP_ACK_Bounce",
     Layer_type(4), # transport
     "TCP_header",
-    5,
+    3,
     32 # 4 bytes / packet
 )
 
@@ -224,8 +224,6 @@ function method_calculations(covert_methods::Vector{covert_method}, env::Dict{Sy
 
     current_method != 0 && (S[current_method] *= 1.1) # Encourage current method (+10%)
 
-    S[1] *= 4 # Encourage IPv4_Identification so we can block it later
-
     return S, R
 end
 
@@ -251,6 +249,5 @@ function determine_method(covert_methods::Vector{covert_method}, env::Dict{Symbo
     # @debug "Determined covert method" covert_methods[i].name score=Sᵢ rate=Rᵢ
 
     # Sort scores by second value in pair (score) and return highest
-    return i, 1.0
     return i, Rᵢ
 end

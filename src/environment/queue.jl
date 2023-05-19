@@ -4,8 +4,6 @@
 
 =#
 
-using .Main: ENVIRONMENT_QUEUE_SIZE
-
 """
     errbuff_to_error(errbuf::Vector{UInt8})
 
@@ -161,18 +159,14 @@ function packet_from_pointer(p::Ptr{UInt8}, packet_size::Int32)::Layer{Ethernet_
 end
 
 """
-    get_callback(queue::Channel{Packet})::Function
+    get_callback(queue::CircularChannel{Packet})::Function
 
 Get a callback function for pcap_loop, which will push packets to the queue
 """
-function get_callback(queue::Channel{Packet})::Function
+function get_callback(queue)::Function
     function callback(::Ptr{UInt8}, header::Ptr{Capture_header}, packet::Ptr{UInt8})::Cvoid
-        sleep(0.00001)
         cap_hdr = unsafe_load(header)
         pkt = Packet(cap_hdr, packet_from_pointer(packet, cap_hdr.capture_length))
-        if queue.n_avail_items == ENVIRONMENT_QUEUE_SIZE
-            take!(queue)
-        end
         put!(queue, pkt)
         return nothing
     end
@@ -192,12 +186,12 @@ end
 get_local_ip() = get_local_ip(get_dev())
 
 """
-    init_queue(device::String, bpf_filter_string::String="")::Channel{Packet}
+    init_queue(device::String, bpf_filter_string::String="")::CircularChannel{Packet}
 
-Given the device to open the queue on, return a Channel{Packet} which will be filled with packets
+Given the device to open the queue on, return a CircularChannel{Packet} which will be filled with packets
 """
-function init_queue(device::String, bpf_filter_string::String="")::Channel{Packet}
-    queue = Channel{Packet}(ENVIRONMENT_QUEUE_SIZE)
+function init_queue(device::String=get_dev(); bpf_filter_string::String="")::CircularChannel{Packet}
+    queue = CircularChannel{Packet}(ENVIRONMENT_QUEUE_SIZE)
     handle = pcap_open_live(device, -1, true)
     # Set the filter if one is supplied
     if bpf_filter_string != ""
@@ -215,7 +209,6 @@ function init_queue(device::String, bpf_filter_string::String="")::Channel{Packe
     @debug "Creating pcap sniffer" device=device
     # Run the listener in a seperate thread
     #  we use errormonitor here so errors on this thread are sent to main thread
-    errormonitor(@async pcap_loop(handle, -1, callback, C_NULL))
+    errormonitor(Base.Threads.@spawn pcap_loop(handle, -1, callback, C_NULL))
     return queue
 end
-init_queue(bpf_filter::String="")::Channel{Packet} = init_queue(get_dev(), bpf_filter)
