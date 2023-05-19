@@ -79,7 +79,6 @@ function try_recover(packet::Packet, integrities::Vector{Tuple{Int, UInt8}}, met
     for (i, method) ∈ enumerate(methods)
         if couldContainMethod(packet, method)
             data = bitstring(decode(method, packet))
-            @debug "Method $(method.name) yields" data
             if length(data) >= MINIMUM_CHANNEL_SIZE + 12 && data[1:MINIMUM_CHANNEL_SIZE] == bitstring(SENTINEL)[end-MINIMUM_CHANNEL_SIZE+1:end]
                 offset = parse(UInt8, data[MINIMUM_CHANNEL_SIZE+1:MINIMUM_CHANNEL_SIZE+8], base=2)
                 transmission_length = parse(Int, data[MINIMUM_CHANNEL_SIZE+9:MINIMUM_CHANNEL_SIZE+12], base=2)
