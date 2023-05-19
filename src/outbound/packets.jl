@@ -535,13 +535,16 @@ function send_covert_payload(raw_payload::Vector{UInt8}, methods::Vector{covert_
             
             # Switch methods
             method = methods[method_index]
+
+            if method_index != current_method_index
+                @info "Switched method, performing integrity check" method=method.name interval=time_interval
+                protocol_failures = 0
+            end
+
             method_kwargs = init(method, net_env)
             current_method_index = method_index
             if packet_count % integrity_interval == 0
                 @debug "Performing regular interval integrity check" interval=integrity_interval
-            elseif method_index != current_method_index
-                @debug "Switched method, performing integrity check" method=method.name interval=time_interval
-                protocol_failures = 0
             elseif !should_verify
                 @debug "Final integrity check"
             end

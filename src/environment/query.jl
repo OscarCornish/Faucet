@@ -263,10 +263,10 @@ function get_tcp_server(q::Vector{Packet})::Union{Tuple{NTuple{6, UInt8}, UInt32
         service_port = getfield(service[layer2index["TCP_header"]], :dport)
         # TCP_header.dport -> tcp server port
     else
-        syn_services = query_queue(q, syn_query)
-        if !isempty(syn_services)
+        syn_traffic = query_queue(q, syn_query)
+        if !isempty(syn_traffic)
             # Take most recently active one
-            service = pop!(syn_services)
+            service = pop!(syn_traffic)
             # Again, a packet going toward a tcp server
             service_mac = getfield(service[layer2index["Ethernet_header"]], :source)
             # Ethernet_header -> tcp server mac (of next hop from local perspective)
